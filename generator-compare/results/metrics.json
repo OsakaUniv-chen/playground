@@ -1,0 +1,265 @@
+{
+  "n_bags": 65,
+  "overall": {
+    "n": 49786,
+    "agree_4label": 0.9999397420961716,
+    "kappa_4label": 0.9999186679747838,
+    "n_both_LR": 24072,
+    "side_agree_both_LR": 0.9999584579594549,
+    "agree_when_old_LR": 0.9998753842319514,
+    "n_old_LR": 24074,
+    "agree_when_new_LR": 0.9999584579594549,
+    "n_new_LR": 24072
+  },
+  "per_mode": {
+    "DoA": {
+      "n": 9969,
+      "agree_4label": 1.0,
+      "kappa_4label": 1.0,
+      "n_both_LR": 4703,
+      "side_agree_both_LR": 1.0,
+      "agree_when_old_LR": 1.0,
+      "n_old_LR": 4703,
+      "agree_when_new_LR": 1.0,
+      "n_new_LR": 4703
+    },
+    "PSSP": {
+      "n": 10140,
+      "agree_4label": 0.9998027613412229,
+      "kappa_4label": 0.9997315111750531,
+      "n_both_LR": 4668,
+      "side_agree_both_LR": 0.9997857754927164,
+      "agree_when_old_LR": 0.9995716427500535,
+      "n_old_LR": 4669,
+      "agree_when_new_LR": 0.9997857754927164,
+      "n_new_LR": 4668
+    },
+    "Random": {
+      "n": 9826,
+      "agree_4label": 1.0,
+      "kappa_4label": 1.0,
+      "n_both_LR": 5140,
+      "side_agree_both_LR": 1.0,
+      "agree_when_old_LR": 1.0,
+      "n_old_LR": 5140,
+      "agree_when_new_LR": 1.0,
+      "n_new_LR": 5140
+    },
+    "Tele": {
+      "n": 9859,
+      "agree_4label": 0.9998985698346688,
+      "kappa_4label": 0.9998633723990711,
+      "n_both_LR": 5187,
+      "side_agree_both_LR": 1.0,
+      "agree_when_old_LR": 0.9998072474942175,
+      "n_old_LR": 5188,
+      "agree_when_new_LR": 1.0,
+      "n_new_LR": 5187
+    },
+    "Video": {
+      "n": 9992,
+      "agree_4label": 1.0,
+      "kappa_4label": 1.0,
+      "n_both_LR": 4374,
+      "side_agree_both_LR": 1.0,
+      "agree_when_old_LR": 1.0,
+      "n_old_LR": 4374,
+      "agree_when_new_LR": 1.0,
+      "n_new_LR": 4374
+    }
+  },
+  "label_dist": {
+    "overall": {
+      "old": {
+        "Left": 0.2520186397782509,
+        "Right": 0.23153095247659986,
+        "Teleoperator": 0.3239264050134576,
+        "Others": 0.19252400273169165
+      },
+      "new": {
+        "Left": 0.2520186397782509,
+        "Right": 0.23149078054071426,
+        "Teleoperator": 0.3239264050134576,
+        "Others": 0.19256417466757722
+      }
+    },
+    "per_mode": {
+      "DoA": {
+        "old": {
+          "Left": 0.219681011134517,
+          "Right": 0.25208145250275854,
+          "Teleoperator": 0.3419600762363326,
+          "Others": 0.18627746012639182
+        },
+        "new": {
+          "Left": 0.219681011134517,
+          "Right": 0.25208145250275854,
+          "Teleoperator": 0.3419600762363326,
+          "Others": 0.18627746012639182
+        }
+      },
+      "PSSP": {
+        "old": {
+          "Left": 0.2522682445759369,
+          "Right": 0.20818540433925048,
+          "Teleoperator": 0.34990138067061144,
+          "Others": 0.1896449704142012
+        },
+        "new": {
+          "Left": 0.2522682445759369,
+          "Right": 0.20808678500986194,
+          "Teleoperator": 0.34990138067061144,
+          "Others": 0.18974358974358974
+        }
+      },
+      "Random": {
+        "old": {
+          "Left": 0.28831671076735194,
+          "Right": 0.23478526358640342,
+          "Teleoperator": 0.3032770201506208,
+          "Others": 0.17362100549562384
+        },
+        "new": {
+          "Left": 0.28831671076735194,
+          "Right": 0.23478526358640342,
+          "Teleoperator": 0.3032770201506208,
+          "Others": 0.17362100549562384
+        }
+      },
+      "Tele": {
+        "old": {
+          "Left": 0.2580383406024952,
+          "Right": 0.26818135713561214,
+          "Teleoperator": 0.2955675017750279,
+          "Others": 0.1782128004868648
+        },
+        "new": {
+          "Left": 0.2580383406024952,
+          "Right": 0.26807992697028094,
+          "Teleoperator": 0.2955675017750279,
+          "Others": 0.17831423065219595
+        }
+      },
+      "Video": {
+        "old": {
+          "Left": 0.24239391513210568,
+          "Right": 0.1953562850280224,
+          "Teleoperator": 0.3278622898318655,
+          "Others": 0.2343875100080064
+        },
+        "new": {
+          "Left": 0.24239391513210568,
+          "Right": 0.1953562850280224,
+          "Teleoperator": 0.3278622898318655,
+          "Others": 0.2343875100080064
+        }
+      }
+    }
+  },
+  "confusion_old_rows_new_cols": [
+    [
+      12546,
+      0,
+      0,
+      1
+    ],
+    [
+      1,
+      11525,
+      0,
+      1
+    ],
+    [
+      0,
+      0,
+      16127,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      9585
+    ]
+  ],
+  "disagreements": [
+    {
+      "bag": "G10_game3_PSSP",
+      "tick_idx": 443,
+      "vad": false,
+      "old_label": "Right",
+      "new_label": "Left",
+      "old_metric": [
+        209.125,
+        210.0,
+        0.0,
+        161.0
+      ],
+      "new_metric": [
+        210.0,
+        210.0,
+        0.0,
+        161.0
+      ],
+      "pearson": 0.9999153880668737,
+      "peak_dist": 0.0
+    },
+    {
+      "bag": "G8_game3_PSSP",
+      "tick_idx": 307,
+      "vad": false,
+      "old_label": "Left",
+      "new_label": "Others",
+      "old_metric": [
+        90.0,
+        5.0,
+        0.0,
+        90.0
+      ],
+      "new_metric": [
+        90.0,
+        5.0,
+        0.0,
+        91.0
+      ],
+      "pearson": 0.9999161336258924,
+      "peak_dist": 0.0
+    },
+    {
+      "bag": "G8_game5_Tele",
+      "tick_idx": 485,
+      "vad": false,
+      "old_label": "Right",
+      "new_label": "Others",
+      "old_metric": [
+        133.0,
+        177.0,
+        0.0,
+        177.0
+      ],
+      "new_metric": [
+        133.0,
+        176.125,
+        0.0,
+        177.0
+      ],
+      "pearson": 0.9999146921842568,
+      "peak_dist": 0.0
+    }
+  ],
+  "raw_sm": {
+    "n": 49786,
+    "pearson_mean": 0.999915145317884,
+    "pearson_median": 0.999914835248866,
+    "pearson_p10": 0.9999123375446826,
+    "peak_dist_median": 0.0,
+    "peak_dist_mean": 0.00036154742297031295,
+    "frac_peak_same_cell": 0.9996384525770297,
+    "frac_peak_within_2": 1.0
+  },
+  "timing": {
+    "old_ms_per_map": 804.2,
+    "new_ms_per_map": 104.9,
+    "speedup_new_over_old": 7.7
+  }
+}

@@ -1,0 +1,29 @@
+# analysis2 environment — verified working set (macOS arm64 / Python 3.10, 2026-07-05).
+# HARD CONSTRAINT: numpy < 2. The vendored acoular 24.05 + numba need numpy 1.x,
+# and mediapipe must be an older build that also accepts numpy 1.x (see below).
+# On the high-spec run PC, recreate this exact set:
+#   python3.10 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+
+numpy==1.26.4
+scipy==1.15.3
+numba==0.59.1              # requires numpy<1.27
+traits==6.4.3             # acoular 24.05 needs ListInt (removed in traits>=8)
+h5py==3.16.0             # acoular import-time check (caching itself is disabled)
+packaging==26.2
+scikit-learn==1.7.2      # acoular.fbeamform
+opencv-python-headless==4.11.0.86   # use opencv-python (non-headless) if you want cv2.imshow in bag2video
+torch==2.12.1
+timm==1.0.27             # simvp.py: DropPath, trunc_normal_
+mediapipe==0.10.14       # last line that installs cleanly with numpy 1.26 (0.10.20+ forces numpy>=2)
+
+# WP3 output / WP4 analysis
+pyarrow>=15              # parquet tick tables
+pandas>=2               # WP4 analysis scripts
+matplotlib>=3          # WP4 histograms
+
+# bag2video (WP2 step 0) extras — only needed for the QC video:
+#   soundfile, pydub   (+ system ffmpeg on PATH)
+
+# vad_check (room1 speech-gate QC) extras:
+webrtcvad-wheels          # ==2.0.14, imports as `webrtcvad`; numpy-independent C ext
+silero-vad                # ==6.2.1, neural VAD; bundles model (no runtime download), uses torch

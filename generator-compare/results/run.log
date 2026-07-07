@@ -1,0 +1,209 @@
+65 bag(s) to compare (device=cpu, workers=6, frame_stride=2); 0 skipped/done
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1783294169.774539 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+I0000 00:00:1783294169.774510 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+I0000 00:00:1783294169.774511 6846073 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1783294169.774510 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+I0000 00:00:1783294169.774529 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+I0000 00:00:1783294169.774513 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+INFO: INFO: INFO: INFO: INFO: INFO: Created TensorFlow Lite XNNPACK delegate for CPU.Created TensorFlow Lite XNNPACK delegate for CPU.
+Created TensorFlow Lite XNNPACK delegate for CPU.Created TensorFlow Lite XNNPACK delegate for CPU.Created TensorFlow Lite XNNPACK delegate for CPU.
+
+
+Created TensorFlow Lite XNNPACK delegate for CPU.
+
+W0000 00:00:1783294169.826597 6846505 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783294169.826708 6846502 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783294169.826708 6846531 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783294169.827593 6846529 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783294169.827619 6846519 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1783294169.833324 6846521 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G10_game6_Random: 748 ticks (old 801.7ms/new 107.0ms per map) in 840s
+  done G10_game4_Tele: 752 ticks (old 798.9ms/new 105.8ms per map) in 840s
+  done G10_game5_DoA: 752 ticks (old 802.0ms/new 110.4ms per map) in 846s
+I0000 00:00:1783295006.514616 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295006.571657 6857858 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783295007.560520 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295007.609045 6857882 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G10_game2_Video: 763 ticks (old 800.7ms/new 111.9ms per map) in 858s
+  done G11_game2_Video: 769 ticks (old 799.8ms/new 106.9ms per map) in 860s
+I0000 00:00:1783295012.265589 6846073 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295012.311201 6857974 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G10_game3_PSSP: 775 ticks (old 803.2ms/new 108.5ms per map) in 870s
+I0000 00:00:1783295025.046329 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295025.089990 6858133 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783295026.401265 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295026.442644 6858176 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783295037.799446 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295037.869686 6858357 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G11_game3_Random: 754 ticks (old 755.1ms/new 101.7ms per map) in 794s
+  done G11_game4_DoA: 755 ticks (old 757.0ms/new 99.4ms per map) in 795s
+  done G11_game5_Tele: 752 ticks (old 756.9ms/new 102.7ms per map) in 792s
+I0000 00:00:1783295799.860438 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295799.919577 6868217 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783295800.003726 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295800.048352 6868229 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783295804.918951 6846073 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295804.953332 6868273 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G12_game2_Video: 768 ticks (old 756.2ms/new 100.7ms per map) in 797s
+  done G12_game3_Tele: 766 ticks (old 752.5ms/new 99.9ms per map) in 790s
+I0000 00:00:1783295821.009715 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295821.064878 6868506 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G11_game6_PSSP: 778 ticks (old 753.6ms/new 100.2ms per map) in 814s
+I0000 00:00:1783295825.161976 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295825.201833 6868593 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783295838.271131 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783295838.312556 6868762 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G12_game5_Random: 751 ticks (old 754.9ms/new 99.7ms per map) in 760s
+  done G13_game2_Video: 740 ticks (old 758.6ms/new 99.1ms per map) in 751s
+I0000 00:00:1783296560.338464 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783296560.391112 6878517 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G12_game4_PSSP: 774 ticks (old 752.3ms/new 99.0ms per map) in 778s
+I0000 00:00:1783296574.001401 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783296574.059111 6878710 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783296579.500208 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783296579.572918 6878783 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G13_game3_DoA: 752 ticks (old 768.2ms/new 100.4ms per map) in 783s
+  done G13_game4_Random: 752 ticks (old 766.2ms/new 102.2ms per map) in 783s
+I0000 00:00:1783296609.490190 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783296609.529620 6879251 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G12_game6_DoA: 803 ticks (old 760.9ms/new 100.7ms per map) in 827s
+I0000 00:00:1783296621.870226 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783296621.909167 6879417 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783296631.540751 6846073 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783296631.580903 6879523 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G13_game6_Tele: 753 ticks (old 765.3ms/new 96.2ms per map) in 783s
+  done G13_game5_PSSP: 780 ticks (old 759.3ms/new 98.0ms per map) in 805s
+I0000 00:00:1783297354.897956 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783297354.950037 6891451 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783297364.730569 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783297364.767990 6891533 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G1_game3_Tele: 756 ticks (old 764.1ms/new 95.7ms per map) in 786s
+I0000 00:00:1783297395.719264 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783297395.765637 6891856 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G1_game2_Video: 819 ticks (old 757.5ms/new 98.8ms per map) in 850s
+  done G1_game5_DoA: 772 ticks (old 760.7ms/new 97.7ms per map) in 801s
+  done G1_game4_PSSP: 783 ticks (old 759.7ms/new 96.9ms per map) in 812s
+I0000 00:00:1783297429.374123 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783297429.410100 6892093 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783297433.461992 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783297433.499815 6892132 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783297434.140657 6846073 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783297434.178969 6892147 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G1_game6_Random: 754 ticks (old 697.3ms/new 89.6ms per map) in 722s
+I0000 00:00:1783298076.434090 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783298076.490064 6898770 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G2_game2_Video: 758 ticks (old 700.6ms/new 89.3ms per map) in 727s
+I0000 00:00:1783298087.669432 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783298087.708285 6899086 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G2_game3_PSSP: 786 ticks (old 701.1ms/new 88.2ms per map) in 754s
+I0000 00:00:1783298149.112118 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783298149.152571 6899832 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G2_game4_DoA: 769 ticks (old 699.2ms/new 90.3ms per map) in 743s
+I0000 00:00:1783298170.348232 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783298170.387662 6900172 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G2_game5_Tele: 783 ticks (old 700.0ms/new 90.4ms per map) in 756s
+  done G2_game6_Random: 793 ticks (old 701.9ms/new 88.6ms per map) in 765s
+I0000 00:00:1783298187.654238 6846073 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783298187.694213 6900534 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783298197.719336 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783298197.762843 6900616 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G3_game3_Tele: 750 ticks (old 810.8ms/new 103.6ms per map) in 818s
+  done G3_game2_Video: 769 ticks (old 813.5ms/new 99.7ms per map) in 839s
+I0000 00:00:1783298910.277450 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783298910.329497 6914749 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783298916.745569 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783298916.797404 6914954 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G3_game4_DoA: 781 ticks (old 817.0ms/new 101.9ms per map) in 858s
+  done G3_game6_Random: 756 ticks (old 804.9ms/new 103.7ms per map) in 829s
+I0000 00:00:1783299007.726979 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783299007.791502 6916309 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G3_game5_PSSP: 780 ticks (old 807.4ms/new 104.0ms per map) in 855s
+I0000 00:00:1783299018.059331 6846073 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783299018.100544 6916454 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783299023.710750 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783299023.749990 6916564 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G4_game2_Video: 770 ticks (old 805.1ms/new 104.1ms per map) in 846s
+I0000 00:00:1783299044.503911 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783299044.546140 6916853 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G4_game3_DoA: 761 ticks (old 761.2ms/new 94.0ms per map) in 790s
+I0000 00:00:1783299698.722026 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783299698.767046 6927549 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G4_game4_PSSP: 780 ticks (old 759.5ms/new 95.6ms per map) in 810s
+I0000 00:00:1783299728.263034 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783299728.307433 6927839 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G4_game5_Tele: 760 ticks (old 763.9ms/new 94.5ms per map) in 790s
+  done G4_game6_Random: 754 ticks (old 759.8ms/new 96.8ms per map) in 783s
+  done G5_game2_Video: 761 ticks (old 760.6ms/new 96.1ms per map) in 786s
+I0000 00:00:1783299797.301928 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783299797.344133 6928722 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783299801.539845 6846073 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783299801.586041 6928835 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783299809.847482 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783299809.896350 6928905 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G5_game3_Random: 763 ticks (old 760.4ms/new 95.3ms per map) in 791s
+I0000 00:00:1783299834.586157 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783299834.635354 6929113 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G5_game4_Tele: 768 ticks (old 823.6ms/new 105.0ms per map) in 854s
+I0000 00:00:1783300555.505442 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783300555.587553 6945633 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G5_game5_PSSP: 778 ticks (old 838.3ms/new 108.5ms per map) in 882s
+I0000 00:00:1783300610.690768 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783300610.762727 6947178 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G5_game6_DoA: 760 ticks (old 838.2ms/new 107.2ms per map) in 865s
+  done G6_game3_Tele: 756 ticks (old 835.9ms/new 107.5ms per map) in 857s
+I0000 00:00:1783300662.276147 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783300662.330967 6948115 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783300668.165107 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783300668.204131 6948236 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G6_game4_Random: 755 ticks (old 830.4ms/new 107.9ms per map) in 857s
+I0000 00:00:1783300691.480094 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783300691.521413 6948526 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G6_game2_Video: 804 ticks (old 827.7ms/new 109.5ms per map) in 907s
+I0000 00:00:1783300707.416759 6846073 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783300707.457610 6948711 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G6_game5_PSSP: 782 ticks (old 965.3ms/new 132.8ms per map) in 1022s
+I0000 00:00:1783301576.971803 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783301577.038878 6961005 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G6_game6_DoA: 754 ticks (old 983.2ms/new 134.8ms per map) in 994s
+I0000 00:00:1783301604.253936 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783301604.305090 6961471 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G7_game3_DoA: 762 ticks (old 1003.2ms/new 139.6ms per map) in 1021s
+  done G7_game2_Video: 774 ticks (old 1001.2ms/new 139.2ms per map) in 1035s
+  done G7_game4_Tele: 753 ticks (old 993.8ms/new 141.1ms per map) in 1011s
+I0000 00:00:1783301691.745582 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783301691.797155 6962713 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G7_game5_Random: 750 ticks (old 987.3ms/new 136.2ms per map) in 1003s
+I0000 00:00:1783301699.380819 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783301699.444130 6962857 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783301705.125219 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783301705.175280 6963048 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783301713.616070 6846073 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783301713.658890 6963159 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G8_game2_Video: 752 ticks (old 962.7ms/new 126.4ms per map) in 977s
+  done G7_game6_PSSP: 780 ticks (old 962.6ms/new 127.0ms per map) in 1014s
+I0000 00:00:1783302581.292968 6846081 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783302581.344074 6975121 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783302590.609989 6846077 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783302590.647742 6975240 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G8_game4_Random: 749 ticks (old 956.1ms/new 124.9ms per map) in 971s
+  done G8_game5_Tele: 756 ticks (old 948.8ms/new 126.2ms per map) in 975s
+I0000 00:00:1783302669.202035 6846078 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783302669.262312 6976137 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+I0000 00:00:1783302681.369838 6846070 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783302681.420371 6976274 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G8_game3_PSSP: 780 ticks (old 948.2ms/new 128.0ms per map) in 1007s
+I0000 00:00:1783302697.807827 6846080 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M1
+W0000 00:00:1783302697.853596 6976492 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+  done G8_game6_DoA: 795 ticks (old 951.3ms/new 123.0ms per map) in 1025s
+  done G9_game2_Video: 745 ticks (old 741.3ms/new 90.3ms per map) in 759s
+  done G9_game3_Random: 747 ticks (old 736.2ms/new 89.6ms per map) in 759s
+  done G9_game4_DoA: 753 ticks (old 697.4ms/new 83.6ms per map) in 733s
+  done G9_game6_Tele: 754 ticks (old 678.1ms/new 84.2ms per map) in 717s
+  done G9_game5_PSSP: 784 ticks (old 672.1ms/new 83.3ms per map) in 741s
+compared 65/65 bags -> /Users/chen/Documents/Playground/result-plot/analysis2/generator_compare/results/ticks; index.csv updated

@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+.DS_Store
+
+# large model checkpoint, excluded per user request
+analysis2/code/pssp/config_simvp_exp4.pt
