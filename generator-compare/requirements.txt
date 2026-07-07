@@ -1,0 +1,17 @@
+# generator-compare — verified working set (Ubuntu, Python 3.10, 2026-07-07).
+# HARD CONSTRAINT: numpy < 2. The vendored acoular (soundmap/acoular) + numba
+# need numpy 1.x, and mediapipe must be a build that also accepts numpy 1.x.
+
+numpy==1.26.4
+scipy==1.15.3
+numba==0.60.0             # acoular fastFuncs
+traits==6.4.3              # acoular needs ListInt (removed in traits>=8)
+scikit-learn==1.5.0        # acoular.fbeamform
+opencv-python==4.10.0.82
+torch==2.3.1
+mediapipe==0.10.21
+pyarrow>=15                # parquet tick tables
+matplotlib>=3              # report plots
+
+# h5py is optional: acoular only imports it if config.have_h5py and we run with
+# global_caching='none' (set in soundmap/sound_map.py), so it's never touched.

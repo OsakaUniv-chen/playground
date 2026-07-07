@@ -378,15 +378,9 @@ def _report(result, modes_present, conf, dis):
              "The 2000–8000 Hz band (NEW) vs 1/3-octave-at-2000 (OLD) difference lands almost "
              "entirely in low-energy cells that the `exp(x−max)` labeling transform crushes to ~0, "
              "so it never moves the argmax that decides the label.\n")
-    L.append("This **revises** the hypothesis in `analysis1_until_0702/doa_kappa_debug_0705.md`. "
-             "That note attributed the low DoA/PSSP gaze-on-speaker κ to the OLD↔NEW generator "
-             "swap, but it never actually compared the generators (it compared the *live* target "
-             "against the *offline-recomputed* gt, ~71–75%). Isolating the generator alone — same "
-             "audio window, same head boxes, same VAD, same labeling path — the generators barely "
-             "differ. The analysis1 κ shortfall must therefore come from the OTHER differences "
-             "bundled into that live-vs-offline comparison (window/timing misalignment, the "
-             "Teleoperator/Others random-walk decoupling, motor smoothing, live-vs-recomputed head "
-             "boxes), not from the beamformer. The NEW generator is also ~7-8× faster.\n")
+    L.append("Swapping the beamformer alone — same audio window, same head boxes, same VAD, same "
+             "labeling path — is therefore **safe**: it does not change the 4-label targeting "
+             "decision, and the NEW generator is also ~7-8× faster.\n")
     L.append("Plots: `confusion_matrix.png`, `agreement_by_mode.png`, `label_distribution.png`, "
              "`raw_sm_similarity.png`. Machine-readable: `metrics.json`, `confusion.csv`.\n")
     (OUT / "report.md").write_text("\n".join(L))

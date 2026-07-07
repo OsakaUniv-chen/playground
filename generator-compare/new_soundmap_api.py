@@ -25,8 +25,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)                    # resolves `new_sound_map`
 # Reuse the SAME 16-mic geometry as the 'old' generator (fair comparison).
-XML_PATH = os.path.join(_HERE, os.pardir, "code", "soundmap", "acoular",
-                        "xml", "minidsp_uma-16.xml")
+XML_PATH = os.path.join(_HERE, "soundmap", "acoular", "xml", "minidsp_uma-16.xml")
 
 
 class NewSoundMapAPI:

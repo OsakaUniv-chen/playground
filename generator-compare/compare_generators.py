@@ -45,10 +45,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_CODE = os.path.abspath(os.path.join(_HERE, os.pardir, "code"))
-for _p in (_CODE, _HERE):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
 import bag_io as B
 
