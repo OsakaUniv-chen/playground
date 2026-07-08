@@ -1,5 +1,9 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(source /usr/local/bin/virtualenvwrapper.sh && workon wolf)",
+      "Bash(~/.virtualenvs/wolf/bin/python -c ' *)"
+    ],
     "additionalDirectories": [
       "/home/chen/.claude"
     ]

@@ -5,8 +5,11 @@ overlay it on the room1 camera with the 4-label / head boxes / speaking box /
 VAD state, and mux with the mic audio into an mp4. Watch it to confirm the
 regenerated sound map actually tracks the speaker BEFORE trusting the numbers.
 
-Reference: train_orig_sm_target_sm_gray/11/bag2Video.py (audio reconstruction +
-ffmpeg muxing). Here we additionally overlay the regenerated SM.
+Self-contained: this file only depends on the other modules in this same
+video-generator/ folder (bag_io, room1_vad, labeling,
+beamform_soundmap). Uses a torch-based frequency-domain beamforming
+sound-map generator (no acoular dependency) — see generator-compare/ for the
+validation that it's a harmless drop-in for the old acoular generator.
 
     OPENBLAS_NUM_THREADS=1 python bag2video.py
 """
@@ -24,15 +27,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bag_io as B
 import room1_vad as R1
-import vad_overlay as VO
 from labeling import (label_current_sm, mask_speaking_box, plot_annotations,
                       sm_to_color, transform_sm, vad_active_at, get_speaking_box)
-from soundmap_api import SoundMapAPI
+from beamform_soundmap import SoundMapAPI
 
-# ==== configure here (defaults; optional argv: BAG_NAME START_S DURATION_S) ===
-BAG = os.path.join(B.resolve_bag_root(), "G11_game4_DoA")
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   "..", "results", "qc_video")
+# ==== configure here (hardcoded source bag) ================================
+BAG_PATH = "/media/chen/Extreme SSD/WordWolfExp/ROSbag"   # ROSbag root dir
+BAG_NAME = "G11_game4_DoA"                                # bag to render
+BAG = os.path.join(BAG_PATH, BAG_NAME)
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "qc_video")
 START_S = 30.0     # skip the first START_S seconds (buffer fill + settling)
 DURATION_S = 60.0  # length of the QC clip
 TICK = 0.25        # 4 Hz
@@ -41,12 +44,6 @@ PANEL_H = 260      # room1-VAD + 4-label strip height (added below the sound-map
 PPF = 12           # strip pixels per tick (window shown = PLOT_SIZE/PPF ticks)
 FS = 44100
 CHANNELS = 16
-if len(sys.argv) > 1:
-    BAG = os.path.join(B.resolve_bag_root(), sys.argv[1])
-if len(sys.argv) > 2:
-    START_S = float(sys.argv[2])
-if len(sys.argv) > 3:
-    DURATION_S = float(sys.argv[3])
 # ==========================================================================
 
 
@@ -77,21 +74,29 @@ def main():
     ticks = np.arange(t0, t_end, int(TICK * 1e9))
     print(f"{len(ticks)} ticks over {DURATION_S:.0f}s")
 
-    # room1 VAD strip (silero, chosen gate) — RMS envelope + speaking band per tick
+    # room1 VAD strip (silero) — RMS envelope (per tick) + native-resolution speech band
+    PPS = PPF / TICK                  # strip pixels per second (same visual scale as before)
+    duration_s = (t_end - t0) / 1e9
     lo = int(np.searchsorted(a_ts, t0 - int(1e9)))
     hi = int(np.searchsorted(a_ts, t_end, side="right"))
     mono_s = np.concatenate([np.frombuffer(b, np.int16).reshape(-1, CHANNELS)
                              for b in a_d[lo:hi]]).astype(np.float32).mean(axis=1)
-    rms_db = VO.per_tick_rms(mono_s, FS, int(a_ts[lo]), ticks, 0.46)
-    spk = R1.speaking_at_ticks(mono_s, FS, int(a_ts[lo]), ticks)
-    strip, geom = VO.build_strip(rms_db, spk, PPF, PANEL_H, VO.LABEL_BARS)
-    print(f"room1 speaking: {100 * spk.mean():.0f}% of ticks")
+    strip, geom = R1.build_strip(duration_s, PPS, PANEL_H, R1.LABEL_BARS)
+    tick_off_s = (ticks - t0) / 1e9
+    rms_db = R1.per_tick_rms(mono_s, FS, int(a_ts[lo]), ticks, 0.46)
+    R1.paint_env(strip, geom, rms_db, tick_off_s, TICK, PPS)
+    segs = R1.speech_segments(mono_s, FS)                          # native-res silero segments
+    vad_segs = R1.clip_segments(segs, (int(a_ts[lo]) - t0) / 1e9, duration_s)
+    R1.paint_vad_segments(strip, geom, vad_segs, PPS)
+    print(f"room1 speaking: {100 * sum(b - a for a, b in vad_segs) / duration_s:.0f}% of clip")
 
     api = SoundMapAPI()
     speaking_box = get_speaking_box()
+    painter = R1.LabelRunPainter(strip, geom, PPS)
     frames = []
     last_frame = None                 # reused if a tick has no decodable camera frame, so
     for i, t in enumerate(ticks):     # len(frames) == len(ticks) and the 4 fps stays real-time
+        t_s = (t - t0) / 1e9
         ja = int(np.searchsorted(a_ts, t, side="right"))
         jc = int(np.searchsorted(c_ts, t, side="right")) - 1
         frame = frame_at(c_ts[jc]) if jc >= 0 else None
@@ -109,19 +114,21 @@ def main():
         sm_masked = sm if va else mask_speaking_box(sm)
         sm_color = sm_to_color(transform_sm(sm_masked), plot_size=1080)
         label, metrics, marks = label_current_sm(sm, hb, va, speaking_box=speaking_box)
-        VO.paint_label(strip, geom, i, label, PPF)     # 4-label detection bars
+        painter.update(t_s, t_s + TICK, label)          # 4-label detection bars
 
+        speaking_now = R1.in_speech(vad_segs, t_s)
         cam_resized = cv2.resize(frame, (1080, 1080))
         blend = cv2.addWeighted(sm_color, 0.6, cam_resized, 0.8, 0)
         plot_annotations(blend, label, metrics, hb, speaking_box=speaking_box, marker_points=marks)
-        cv2.putText(blend, f"room1 VAD {'SPEAK' if spk[i] else 'silent'}  t={(t-t0)/1e9:5.2f}s",
+        cv2.putText(blend, f"room1 VAD {'SPEAK' if speaking_now else 'silent'}  t={t_s:5.2f}s",
                     (10, 1050), cv2.FONT_HERSHEY_SIMPLEX, 1.4,
-                    (0, 255, 0) if spk[i] else (0, 0, 255), 3)
+                    (0, 255, 0) if speaking_now else (0, 0, 255), 3)
         scene = cv2.resize(blend, (PLOT_SIZE, PLOT_SIZE))
-        last_frame = np.vstack([scene, VO.crop_panel(strip, geom, i, PPF, PLOT_SIZE)])
+        last_frame = np.vstack([scene, R1.crop_panel(strip, geom, t_s + TICK, PPS, PLOT_SIZE)])
         frames.append(last_frame)
         if i % 40 == 0:
             print(f"  tick {i}/{len(ticks)}", flush=True)
+    painter.finalize(duration_s)
     con.close()
 
     # video @ 4 fps = real time (one tick per frame)

@@ -17,7 +17,6 @@ from the external SSD** — everything needed is vendored here.
 | `bag_io.py` | sqlite bag reader + hand-written CDR decoders (no rosbags dep) |
 | `validate.py` | WP1 bag audit + WP2 reproduction gate |
 | `extract.py` | WP3 per-bag tick extraction → `results/ticks/*.parquet` |
-| `bag2video.py` | WP2 step-0 sound-map QC video |
 | `analyses/wp4.py` | WP4 analyses (confusion / kappa / speech / prediction / pswitch) → `results/metrics/` |
 | `smoke_test.py` | end-to-end import + shape check (synthetic inputs) |
 

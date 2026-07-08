@@ -1,0 +1,11 @@
+# video-generator environment.
+# Uses the torch-based 'new' sound-map generator (new_sound_map.py) — no acoular,
+# no numba/traits/h5py/scikit-learn/mediapipe, and no numpy<2 constraint.
+
+numpy
+scipy
+opencv-python           # non-headless so cv2.imshow works if you want it
+torch
+silero-vad               # neural VAD for room1_vad.py; bundles its own model, uses torch
+
+# + system ffmpeg on PATH (audio/video mux)
