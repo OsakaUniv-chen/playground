@@ -16,11 +16,10 @@ import sys
 import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_PSSP_DIR = os.path.join(_HERE, "pssp")
-if _PSSP_DIR not in sys.path:
-    sys.path.insert(0, _PSSP_DIR)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
-WEIGHTS = os.path.join(_PSSP_DIR, "config_simvp_exp4.pt")
+WEIGHTS = os.path.join(_HERE, "config_simvp_exp4.pt")
 HORIZONS_S = (0.5, 1.0, 1.5, 2.0)  # SimVP pred_len=4 at 2 Hz
 
 
