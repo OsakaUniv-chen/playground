@@ -9,10 +9,16 @@ __pycache__/
 *.safetensors
 *.onnx
 
-# generated QC videos
-video-generator/results/**/*.mp4
+# videos — never commit, regardless of path
+*.mp4
 
-# PSSP: preprocessing-generated training data (npz), never commit -- large,
-# regeneratable from the raw rosbags. Matches train-pssp/first-run/data/,
-# train-pssp/second-run/data/, etc. (see train-pssp/CONTEXT.md run-folder convention).
-train-pssp/*-run/data/
+# PSSP: preprocessing-generated training data, never commit -- large,
+# regeneratable from the raw rosbags (see train-pssp/CONTEXT.md).
+*.npz
+*.npy
+
+# generated data tables — never commit, regenerable from raw data
+*.parquet
+
+# PSSP: training run outputs (checkpoints/logs/plots), regenerable by rerunning
+train-pssp/*-run/train/runs/
