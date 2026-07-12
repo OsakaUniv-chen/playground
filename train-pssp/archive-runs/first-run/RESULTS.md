@@ -1,0 +1,65 @@
+# first-run 结果报告
+
+记录 `first-run/` 这一轮里所有训练/对比的结果。脚本每次运行会在下面追加一节，不覆盖
+历史记录。
+
+## 评价指标说明
+
+- **peak_dist (k=1)**：预测声图和真值声图各自找最大值位置，算欧氏距离（64x64 网格
+  的格子数）。数值越小越好。
+- **PSR_k@n**（来自 `paper5/publications/...Predictive Sound Source
+  Positioning.pdf`，详见 `CONTEXT.md`）：先对声图做 k x k 局部均值滤波（边缘感知，
+  只算图内实际邻居），再算 peak_dist，看这个距离小于阈值 n 的样本占多少比例——是
+  **成功率**，不是平均距离。数值越大越好。这里统一用 k=5, n=5（PSR_k5@5）。
+  "Aggregate" = 对 t+1~t+4 四步取平均，只是总览数字，**不能替代逐步结果**。
+- **baseline（重复最后一帧）**：把输入历史的最后一帧原样当作未来 4 帧的预测，不用
+  模型。任何真正学到时序动态的模型都应该明显超过这个基线——**每次汇报都必须带上
+  这一行**，只看模型自己的数字没有意义。
+
+---
+## 2026-07-09 15:21 对比运行
+
+测试集：`['G2_game3_PSSP', 'G2_game4_DoA', 'G6_game2_Video', 'G6_game3_Tele', 'G6_game4_Random', 'G6_game5_PSSP', 'G6_game6_DoA', 'G6_interview']`（3520 个窗口）。checkpoint：旧 = `access-model/weights/config_simvp_exp4.pt`，新 = `train/runs/baseline/best_model.pt`。
+
+### peak_dist (k=1, 格子数, 64x64 网格, 越小越好)
+
+| | t+1 | t+2 | t+3 | t+4 | 平均 |
+|---|---|---|---|---|---|
+| old (exp4) | 9.94 | 12.15 | 12.68 | 12.87 | 11.91 |
+| new | 10.02 | 10.65 | 10.55 | 10.66 | 10.47 |
+| baseline (repeat-last) | 10.17 | 12.41 | 13.17 | 13.68 | 12.36 |
+
+### PSR_k5@5 (成功率, 越大越好)
+
+| | t+1 | t+2 | t+3 | t+4 | Aggregate |
+|---|---|---|---|---|---|
+| old (exp4) | 67.50% | 59.86% | 57.44% | 56.99% | 60.45% |
+| new | 68.18% | 65.00% | 65.34% | 65.51% | 66.01% |
+| baseline (repeat-last) | 65.77% | 57.84% | 54.63% | 53.10% | 57.83% |
+
+**注意**：新旧模型训练数据分布不完全对等（旧模型训练集不含 WordWolfExp 数据），详见 CONTEXT.md 的对比限制说明。
+
+---
+## 2026-07-09 15:29 对比运行
+
+测试集：`['G2_game3_PSSP', 'G2_game4_DoA', 'G6_game2_Video', 'G6_game3_Tele', 'G6_game4_Random', 'G6_game5_PSSP', 'G6_game6_DoA', 'G6_interview']`（3520 个窗口）。checkpoint：旧 = `access-model/weights/config_simvp_exp4.pt`，新 = `train/runs/baseline/best_model.pt`。
+
+### peak_dist (k=1, 格子数, 64x64 网格, 越小越好)
+
+| | t+1 | t+2 | t+3 | t+4 | 平均 |
+|---|---|---|---|---|---|
+| old (exp4) | 9.94 | 12.15 | 12.68 | 12.87 | 11.91 |
+| new | 10.02 | 10.65 | 10.55 | 10.66 | 10.47 |
+| baseline (repeat-last) | 10.17 | 12.41 | 13.17 | 13.68 | 12.36 |
+
+### PSR_k5@5 (成功率, 越大越好)
+
+| | t+1 | t+2 | t+3 | t+4 | Aggregate |
+|---|---|---|---|---|---|
+| old (exp4) | 67.50% | 59.86% | 57.44% | 56.99% | 60.45% |
+| new | 68.18% | 65.00% | 65.34% | 65.51% | 66.01% |
+| baseline (repeat-last) | 65.77% | 57.84% | 54.63% | 53.10% | 57.83% |
+
+**注意**：新旧模型训练数据分布不完全对等（旧模型训练集不含 WordWolfExp 数据），详见 CONTEXT.md 的对比限制说明。
+
+---

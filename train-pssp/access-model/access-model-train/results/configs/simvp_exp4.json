@@ -1,0 +1,30 @@
+{
+    "method": "simvp",
+    "exp_name": [],
+    "modality_list": ["soundmap", "gray_camimg"],
+    
+    "epochs":60,
+    "bs":32,
+    "sm_ratio":0.5,
+    "train_ratio":0.9,
+    
+    "vae_weight": "vae",
+    "simvp_type": "gsta",
+    "pred_len": 4,
+    
+    "lr": 0.000001,
+    "weight_decay": 0.01,
+    "eta_min": 0.00001,
+    
+    "load_vae": true,
+    "data_aug": true,
+    "video_dataset_label_type": "all",
+    "mod_choices":[
+        "soundmap", "gray_camimg", 
+        "semseg", "depth", "normals", "edge", "human_parts", "sal", 
+        "head_pose", "eye", "mouth", "emotion_valence", "emotion_arousal"
+    ],
+    "video_dataset_label_type_list": ["soundmap", "all"],
+    "simvp_type_list": ["incepu", "gsta", "tau"],
+    "exp_name_example": ["debate_exp1_topic1", "2024-10-23-17_25_43", "2024-10-23-17_35_17"]
+}
