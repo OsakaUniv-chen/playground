@@ -19,24 +19,48 @@
 
 ### 0.2. 結論
 
-1. **行動レベルでは方策間の差を検出できる**：PSSPの+1s発話者予測は「左右どちらが話すか」の判別で偶然水準
-   （50%）・持続予測ベースライン（45.0%）を上回る（54.8%、4.1.1）。tick単位の一致率解析により、モード間の
-   行動的な差は明確に測定できる（ただし4ラベル全体では持続予測に劣り、優位は限定的）。
-2. **真の人間操作者（TELE）も発話者を追従していない**：遠隔操作者自身、右偏り65%・姿勢を固定しがちで
-   （2.1・2.2）、GTとの一致は最良のタイミング補正でも58.9%にとどまる（4.3）。「発話者を追う」という設計
-   目標は、モデルだけでなく人間の操作者においても、この具身条件では実行されていない。
-3. **主観評価はどの方策でも動かない**：GQS 4/5尺度・GEQ 5/5尺度で群間差なし。唯一有意なPerceivedSafetyも
-   PSSPの優位ではなくDoAの低下（5.4）。注視目標を真の人間操作者の選択（TELE）に置き換えても、印象評価は
-   自主条件と変わらない。
-4. **結論（先読み注視の知覚的効果の限界）**：先行の小規模実験と違い、本実験は注視目標の選択を底層の動作
-   実装から切り離した（動作ロジックは全モード共通）。それでも**予測ベースの先読み注視（PSSP）は、偶然水準の
-   方策（Random）と比べて社会的知覚を改善しない**——先行の一体実装で見えたPSSPの優位は、結合していた動作
-   実装の差に由来していた可能性が高い。なお本実験は「注視目標の正確さ」を直接操作していない（PSSPのL/R精度は
-   54.8%で完璧ではなく、完全に正しいGT注視は実機で走らせていない）ため、主張は「先読み的な注視方策が知覚を
-   動かさない」に限定し、「正しく見ても効果がない」とまでは踏み込まない。知覚と関連していたのは、注視の
-   **対象**（誰を見るか）ではなく、注視の**運動学的側面**（どう切り替えるか；ただしこれは注視目標選択から
-   派生する量であって独立変数ではない、示唆）と、ユーザーの**信念**（人だと思うか、相関）であった。論文と
-   しての詳しい位置づけ・想定タイトル・投稿先の検討は [pick-journal.md](pick-journal.md) を参照。
+1. **行動レベルではモード間の差を検出できる**：PSSPの+1s発話者予測は「左右どちらが話すか」の判別で偶然水準（50%）・持続予測ベースライン（45.0%）を上回る（54.8%、§4.1.1）。tick単位の行動監査により、モード間の行動的な差は明確に測定できる（ただし4ラベル全体では持続予測に劣り、優位は限定的）。
+
+2. **「追跡の正確さ」は主観評価と連動しない——むしろ逆を向く**：発話者に注視目標を最もよく合わせているのは真の人間操作者（TELE、GTのlag=−1sに最良対応 58.9%、§4.3）であり、予測でもPSSP（54.8%）がDoA・Random（偶然水準）を上回る。しかし**主観評価の数値的な高低はこの順序と一致せず、発話者を追跡しないRandomがむしろ多くの尺度で最も高い**（GEQ PositiveAffect 4.08・Flow 3.38、GQS PerceivedSafety 3.37 等、§5.3）。「発話者を正しく見る」ことは、この条件では知覚的な見返りを生んでいない。
+
+3. **唯一の有意な主観効果は「動作の代価」であって「注視の対象」ではない**：GQS/GEQ 全10尺度で有意なのはPerceivedSafetyのみ。その正体はPSSPの優位ではなく、**過剰な首振り（P(switch)=0.081、他条件の1.3〜1.6倍、§2.3）を行うDoAの低下**（2.83、§5.4）。turnが極端に短く（左右0.9s、§3.1）音響手掛かりも雑多な本条件では、効く可能性があるのは注視の**対象**（誰を見るか）ではなく注視の**運動学**（どれだけ・どう切り替えるか）——ただしこれは注視目標選択から派生する量で、独立に操作していないため**示唆にとどまる**。
+
+4. **主観と最も強く相関するのは注視条件ではなく信念（因果ではない）**：ロボット印象（GQS）は「人が操作していると思う」信念群で有意に高い（4/5尺度、d=0.49〜0.73、§5.5）一方、注視条件そのものの効果はほぼ0（§5.4）。しかも注視条件は信念ともほとんど対応しない（PTLは各条件で偶然水準、§5.2）。つまり、注視条件は信念をほとんど左右できないのに、信念とロボット印象だけが強く相関している——ただしこれは同一時点の相関であって、信念が印象を生む（先入観）のか、両者に共通原因（人らしい動作が信念と印象を同時に上げる）があるのかは区別できない。GEQ（ゲーム体験）は信念とも条件とも無関係で、GQS（ロボット印象）と切り分けて解釈すべき。
+
+5. **結論（先読み注視の知覚的効果の限界）**：注視目標を動作実装から切り離してもなお、**予測ベースの先読み注視（PSSP）は偶然水準のモード（Random）と比べて社会的知覚を改善しない**。本実験は「注視目標の正確さ」を直接操作していない（PSSPのL/R精度は54.8%で完璧ではない）ため、主張は「先読み的な注視モードが知覚を動かさない」に限定する。建設的な含意として、**次に操作すべき変数は「どこを見るか」ではなく「どう動くか」（運動の平滑さ・切替頻度）である**という仮説が得られ、これは本実験で解けなかった運動次元のablationに直結する。
+
+### 0.3. メインストーリー（論文の骨子）
+
+**設計の新規性——注視目標を動作実装から分離した。**
+先行の小規模実験（JSAI2026）は各モードを一体実装（注視目標＋動作ロジックが結合）しており、その条件下ではPSSPが最良に見えていた。本実験は注視目標の選択を底層の動作実装から切り離し（動作ロジックは全モード共通とし）、変えたのは「誰を見るか」という注視目標だけである。
+
+**分離した途端、主観評価のモード間差は消えた。**
+行動レベルではモード差を検出できる（PSSPの+1s発話者予測は偶然水準・持続基線を上回る54.8%、§4.1.1）にもかかわらず、主観評価はGQS 4/5・GEQ 5/5尺度で群間差なし（§5.4）。予測ベースの先読み注視（PSSP）は、偶然水準のモード（Random）と比べて社会的知覚を動かさない。二方向から支持される：(a)偶然を上回る予測をするPSSPでも主観は動かず、(b)注視目標を真の人間操作者（TELE）に置き換えても評価は変わらない——しかもその人間自身が発話者を追従していない（§2.1・2.2・4.3）。
+
+**むしろ「追跡の正確さ」と主観は逆を向く。**
+追跡が最も正確なモード（TELEはGTのlag=−1sに最良対応、PSSPはDoA・Randomより予測が良い）ほど主観で報われず、追跡しないRandomが多くの尺度で数値的に最も高い（§5.3）。10尺度で唯一有意なのはPerceivedSafetyで、その内実は過剰な首振り（P(switch)最大）を行うDoAの低下（§2.3・5.4）。効いている可能性があるのは注視の**対象**ではなく注視の**運動学**（切替の頻度・節奏）である——ただし運動次元は独立に操作していないため示唆にとどまる。
+
+**知覚と最も強く相関したのは信念（因果ではない）。**
+ロボット印象（GQS）は「これは人か」という信念と強く相関する（d=0.49〜0.73、§5.5）一方、注視条件そのものとはほとんど対応しない（§5.2）。すなわち、注視条件は信念をほとんど左右できず、その信念だけが印象と強く相関する——ただし同一時点の相関であり、因果の向き（信念が印象を生むのか、両者に共通原因があるのか）は特定できない。
+
+**方法論的貢献と次の一手。**
+記録データから全モードを同一観測上で再現し、tick単位で突き合わせる行動監査（§4）が本研究の方法論的貢献。ここから導かれる次の実験は、注視目標を固定して運動次元（平滑さ・切替閾値・最小駐留時間）だけを操作するablationであり、「どこを見るか」から「どう動くか」へ問いを移す。
+
+### 0.4. Summary Paragraph
+
+**想定タイトル（案）**
+- **A｜ヌル＋乖離（推奨・主）**：*Looking Ahead Is Not Enough: Anticipatory Gaze Is Behaviourally Distinct yet Perceptually Inert in Multi-Party Human–Robot Interaction*
+- **C｜乖離を直接前面に**：*Behaviourally Detectable, Perceptually Invisible: The Limits of Predictive Speaker-Directed Gaze in Multi-Party Human–Robot Conversation*
+- **D｜方法論を前面に**：*Auditing Gaze Policies Tick by Tick: Why Predicting the Next Speaker Does Not Improve Social Perception*
+
+1. **Basic introduction**: Social robots increasingly join multi-party conversations, where the direction of a robot's gaze shapes how people perceive it.
+2. **Detailed background**: A common design goal is speaker-directed gaze, and models that anticipate who will speak next are expected to make this gaze feel more natural and socially competent.
+3. **Detailed background**: Earlier small-scale studies bundled each gaze policy with its own motion behaviour, so any apparent benefit of predictive gaze was confounded with how the robot moved.
+4. **General problem**: Whether predictive speaker-directed gaze itself improves social perception, with the underlying motion held constant, has remained unclear.
+5. **Main result / contribution**: Here we show, in a three-player conversational word game with 39 participants, that separating gaze-target selection from a shared motion controller erases group differences on almost all subjective measures, even though a tick-level behavioural audit still detects reliable differences between the policies.
+6. **Result interpretation**: A policy that predicts the next speaker above chance is rated no higher than a chance-level random policy, and substituting a real teleoperator's gaze targets leaves impressions unchanged.
+7. **Result interpretation**: The only reliable subjective effect is lower perceived safety for the policy that shifted gaze most frequently, suggesting that how the gaze moves, rather than whether it lands on the right person, governs perception, while robot impressions instead track participants' belief that a human was in control.
+8. **General context**: In fast-paced embodied conversation, looking at the right person is not enough, and the kinematics of gaze shifts emerge as the variable worth manipulating next.
 
 ---
 
@@ -425,7 +449,7 @@ TELEの追従自体は弱いことは変わらない。
 
 下図は10下位尺度（GQS5＋GEQ5）×条件の箱ひげ図（横軸1–5）。Onsite/Video は GQS 非測定（ロボット評価の対象外）。**全尺度・全条件で分布は大きく重なり、条件間の中央値差は小さい**。PerceivedSafety で DoA がやや低い、GEQ（Flow/PositiveAffect 等）で Random がやや高い傾向が読み取れるが、いずれも下記検定では非有意。
 
-![GQS・GEQ 下位尺度×条件の箱ひげ図](post_survey.png)
+![GQS・GEQ 下位尺度×条件の箱ひげ図](figures/post_survey.png)
 
 **下位尺度スコアの記述統計（平均 ± SD、1–5 尺度）**。各セルは当該条件を評価した回答者の平均±標準偏差。**GQS はロボット4条件のみ**測定（Onsite/Video は「–」）。標本サイズは各ロボット条件 **n=26**（1組3名のうち遠隔操作役1名を除く2名×13組）、GEQ の Onsite は n=39、Video は n=26。
 
