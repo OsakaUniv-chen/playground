@@ -29,8 +29,10 @@ SM_TOPIC = "/sm_without_transform"
 HEAD_TOPIC = "/head/head_box"
 TELE_ORIENT_TOPIC = "/tele/head_orientation"
 
-# ROSbag root candidates: Linux (high-perf PC) first, macOS SSD mount as fallback.
+# ROSbag root candidates: post-reorg (2026-07-12/13 PSSPData 整盘重组, see
+# train-pssp/CONTEXT.md) location first, pre-reorg / macOS SSD mount as fallback.
 BAG_ROOT_CANDIDATES = (
+    "/media/chen/Extreme SSD/PSSPData/WordWolfExp",
     "/media/chen/Extreme SSD/WordWolfExp/ROSbag",
     "/Volumes/Extreme SSD/WordWolfExp/ROSbag",
 )

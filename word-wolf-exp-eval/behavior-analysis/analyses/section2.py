@@ -252,6 +252,53 @@ def tele_yaw_plot():
     print(f"wrote {out_path}")
 
 
+def tele_yaw_plot_tele_only():
+    """Same as tele_yaw_plot() but restricted to the 13 Tele-mode bags (one
+    per group), so the box-plot isn't diluted by PSSP/DoA/Random bags."""
+    BLUE, RED, TEXT, MUTED = "#2a78d6", "#e34948", "#0b0b0b", "#52514e"
+    out_path = FIGURES_DIR / "tele_yaw_bias_tele_only.png"
+
+    summary = pd.read_csv(TELE_YAW_DIR / "summary.csv")
+    summary = summary[summary["bag"].str.endswith("_Tele")].reset_index(drop=True)
+
+    parsed = summary["bag"].str.extract(BAG_RE).astype(int)
+    df = (summary.assign(group=parsed["group"], game=parsed["game"])
+          .sort_values("group").reset_index(drop=True))
+    yaws = [np.load(TELE_YAW_DIR / f"{bag}.npy") for bag in df["bag"]]
+    medians = [np.median(y) for y in yaws]
+
+    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=150)
+    x = np.arange(len(df))
+    bp = ax.boxplot(yaws, positions=x, widths=0.6, patch_artist=True,
+                     showfliers=False, medianprops={"color": TEXT, "linewidth": 1.2},
+                     whiskerprops={"color": MUTED}, capprops={"color": MUTED})
+    for box, med in zip(bp["boxes"], medians):
+        box.set_facecolor(BLUE if med > 0 else RED)
+        box.set_edgecolor(MUTED)
+        box.set_linewidth(0.6)
+    ax.axhline(0, color=TEXT, linewidth=1)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"G{g}" for g in df["group"]], color=MUTED, fontsize=8)
+    ax.set_xlabel(f"操作者（Teleゲームのbag、n={len(df)}）", color=MUTED, fontsize=9)
+    ax.set_ylabel("head yaw (deg)　正=左　負=右", color=TEXT, fontsize=10)
+    ax.set_title("遠隔操作者の頭部 yaw 分布：Teleモードのみ（全13局＝13名）",
+                 color=TEXT, fontsize=11)
+
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color("#c3c2b7")
+    ax.tick_params(colors=MUTED)
+    ax.set_axisbelow(True)
+    ax.yaxis.grid(True, color="#e5e4df", linewidth=0.8)
+
+    fig.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, facecolor="white")
+    print(f"wrote {out_path}")
+
+
 # ============================================================================
 # 2.3 P(switch)
 # ============================================================================
@@ -296,7 +343,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--part", default="all-fast",
-                    choices=["all-fast", "2.1", "2.2-extract", "2.2-plot", "2.3"])
+                    choices=["all-fast", "2.1", "2.2-extract", "2.2-plot",
+                             "2.2-plot-tele-only", "2.3"])
     ap.add_argument("--workers", type=int, default=4, help="for 2.2-extract only")
     args = ap.parse_args()
 
@@ -306,6 +354,8 @@ if __name__ == "__main__":
         tele_yaw_extract(workers=args.workers)
     elif args.part == "2.2-plot":
         tele_yaw_plot()
+    elif args.part == "2.2-plot-tele-only":
+        tele_yaw_plot_tele_only()
     elif args.part == "2.3":
         p_switch()
     else:  # all-fast
@@ -313,5 +363,6 @@ if __name__ == "__main__":
         label_distribution(load_bags())
         print("\n" + "=" * 20, "2.2 Tele yaw plot (needs results/tele_yaw/ already built)", "=" * 20)
         tele_yaw_plot()
+        tele_yaw_plot_tele_only()
         print("\n" + "=" * 20, "2.3 P(switch)", "=" * 20)
         p_switch()

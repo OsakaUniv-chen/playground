@@ -17,7 +17,7 @@ sys.path.insert(0, _UTILS)
 import bag_io as B
 from head_orientation import HeadOrientationAPI
 
-BAG_ROOT = "/media/chen/Extreme SSD/WordWolfExp/ROSbag"
+BAG_ROOT = B.resolve_bag_root()
 OUT_DIR = "/home/chen/Documents/Playground/word-wolf-exp-eval/behavior-analysis/results/qc_video"
 
 

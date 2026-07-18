@@ -63,6 +63,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from scipy.io import wavfile
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
@@ -114,43 +115,42 @@ class Job:
     mode_from_suffix: bool = False  # mode = bag_dir.name's last "_"-separated token
 
 
-# Provenance / vetting notes are in DATA_REPORT.md (may be stale re: pool
-# assignment, see below). Owner reorganized PSSPData on disk (2026-07-11):
-# everything now lives under PSSPDATA_ROOT, WordWolfExp included (was a
-# separate external root before); GRP_meeting/olab_0630/olab_rev_0630 moved
-# under a "Meeting/" parent; demo_data_0318_becap/egoSAS_test_data/riken_3f
-# moved under "egoSAS_demo_data/" (which also gained a new "kitchen"
-# sub-collection); GRP_meeting grew from 5 to ~44 sessions, riken_3f from 1
-# to 8, demo_data_0318_becap from 6 to 8. Owner's call this pass: don't
-# spend time judging train-data vs train-data-aux -- default EVERY job to
-# pool="train-data", owner will triage later. expo_2025 stays excluded: it's
-# an empty folder, nothing to extract, not a judgment call.
-#
-# Worth flagging (not blocking): spot-checking the new GRP_meeting sessions
-# found several (e.g. 2025-12-17-16_39_30) carry `/camera/pose/sample` +
-# Tobii gaze topics -- i.e. they're egocentric-wearable recordings like
-# egoSAS_test_data, mixed in under the SAME collection name as the original
-# 5 fixed-camera sessions. The extraction still runs (moving camera is a
-# geometry-correctness problem, not a crash), but "GRP_meeting" is no longer
-# a uniformly fixed-camera collection -- worth knowing when triaging later.
+# Provenance / vetting notes are in DATA_REPORT.md. Owner did a second full
+# PSSPData reorg (2026-07-12, on top of the 2026-07-11 one): `Experiment0312`/
+# `Experiment1126` top-level dirs are gone -- their bags now live directly
+# under `WordWolfExp/` as `EXP1_*`/`EXP2_*`/`EXP3_*` (15 bags total, same
+# boxie format/naming scheme as the G-prefixed WordWolf-proper bags, owner
+# confirmed every bag under WordWolfExp/ -- G-prefixed, EXP-prefixed, and
+# testrun_0420_* alike -- can plot the 4-label bar). `Testrun0420` similarly
+# moved from its own top-level dir into `WordWolfExp/testrun_0420_{doa,pssp,
+# tele}`. `ProjectMobileRobot_3f` is gone, superseded by a much larger
+# `ATR_teleoperation/data_RIKEN_3f` (28 bags, includes the old 4) plus a
+# brand-new `ATR_teleoperation/data_RIKEN_1F` (49 bags) -- both distinct from
+# `egoSAS_demo_data/riken_3f` (8 bags, no name overlap, genuinely different
+# data). GRP_meeting is now 45 sessions (one moved in from egoSAS_test_data,
+# which correspondingly dropped to 8). No more train-data-aux: every job is
+# pool="train-data", owner will triage later if anything needs separating
+# out. expo_2025 stays excluded: empty folder, nothing to extract.
 JOBS: list[Job] = [
     Job("WordWolfExp", PSSPDATA_ROOT / "WordWolfExp", "train-data", "wordwolf"),
-    Job("Experiment0312", PSSPDATA_ROOT / "Experiment0312", "train-data", "prefixed", mode_from_suffix=True),
-    Job("Experiment1126", PSSPDATA_ROOT / "Experiment1126", "train-data", "prefixed", mode_from_suffix=True),
+    Job("Experiment_EXP", PSSPDATA_ROOT / "WordWolfExp", "train-data", "prefixed", mode_from_suffix=True,
+        only_bags=[f"EXP{n}_{m}" for n in (1, 2, 3) for m in ("DoA", "PSSP", "Random", "Tele", "Video")]),
+    Job("Testrun0420", PSSPDATA_ROOT / "WordWolfExp", "train-data", "prefixed", mode_from_suffix=True,
+        only_bags=["testrun_0420_doa", "testrun_0420_pssp", "testrun_0420_tele"]),
     Job("olab_0630", PSSPDATA_ROOT / "Meeting" / "olab_0630", "train-data", "prefixed"),
     Job("olab_rev_0630", PSSPDATA_ROOT / "Meeting" / "olab_rev_0630", "train-data", "prefixed", camera_flip=True),
     Job("GRP_meeting", PSSPDATA_ROOT / "Meeting" / "GRP_meeting", "train-data", "prefixed"),
     Job("chat", PSSPDATA_ROOT / "chat", "train-data", "prefixed"),
-    Job("Testrun0420", PSSPDATA_ROOT / "Testrun0420", "train-data", "prefixed", mode_from_suffix=True),
     Job("Demonstration_Data", PSSPDATA_ROOT / "Demonstration_Data", "train-data", "prefixed",
         only_bags=["5", "6", "7", "8", "9", "10"]),
     Job("Demonstration_Data_nonconv", PSSPDATA_ROOT / "Demonstration_Data", "train-data", "prefixed",
         only_bags=["1", "2", "3", "4"], npz_prefix="Demonstration_Data"),
     Job("demo_data_0318_becap", PSSPDATA_ROOT / "egoSAS_demo_data" / "demo_data_0318_becap", "train-data", "prefixed"),
-    Job("ProjectMobileRobot_3f", PSSPDATA_ROOT / "ProjectMobileRobot_3f", "train-data", "prefixed"),
     Job("riken_3f", PSSPDATA_ROOT / "egoSAS_demo_data" / "riken_3f", "train-data", "prefixed"),
     Job("egoSAS_test_data", PSSPDATA_ROOT / "egoSAS_demo_data" / "egoSAS_test_data", "train-data", "prefixed"),
     Job("kitchen", PSSPDATA_ROOT / "egoSAS_demo_data" / "kitchen", "train-data", "prefixed"),
+    Job("ATR_RIKEN_1F", PSSPDATA_ROOT / "ATR_teleoperation" / "data_RIKEN_1F", "train-data", "prefixed"),
+    Job("ATR_RIKEN_3f", PSSPDATA_ROOT / "ATR_teleoperation" / "data_RIKEN_3f", "train-data", "prefixed"),
 ]
 JOBS_BY_LABEL = {j.label: j for j in JOBS}
 
@@ -347,13 +347,14 @@ def _write_video_ticks(video_writer: cv2.VideoWriter, camera_frame_at, t: int,
         video_writer.write(np.vstack([scene, panel_crop]))
 
 
-def render_video_only(bag_dir: Path, npz_path: Path, video_writer: cv2.VideoWriter,
+def render_video_only(bag_dir: Path, npz_path: Path, video_path: Path,
                        camera_flip: bool = False) -> None:
     """For a bag that already has a valid npz but is missing its QC video
     (e.g. extracted before video generation existed, or before this
     project's PSSPData reorg) -- regenerates just the video. Reuses the
     already-computed soundmap array (never touches the GPU generator, the
-    expensive part) but DOES re-read audio (for the VAD panel) and camera."""
+    expensive part) but DOES re-read audio (for the VAD panel + mux, see
+    _mux_audio) and camera."""
     data = np.load(npz_path)
     soundmap, tick_ts = data["soundmap"], data["tick_ts"]
 
@@ -375,25 +376,38 @@ def render_video_only(bag_dir: Path, npz_path: Path, video_writer: cv2.VideoWrit
     t0, t_end = int(tick_ts[0]), int(tick_ts[-1]) + int(TICK * 1e9)
     panel = VideoPanel(a_ts, a_d, t0, t_end, head_series, vad_series) if len(a_ts) else None
 
-    for i in range(len(tick_ts)):
-        t = int(tick_ts[i])
-        frame = camera_frame_at(t)
-        if frame is None:
-            continue
-        label_info = panel.label_at(t, soundmap[i]) if (panel is not None and panel.has_labels) else None
-        _write_video_ticks(video_writer, camera_frame_at, t, soundmap[i], frame, panel, label_info)
+    tmp_video = video_path.with_name(f"_tmp_{video_path.name}")
+    writer = _video_writer(tmp_video)
+    try:
+        for i in range(len(tick_ts)):
+            t = int(tick_ts[i])
+            frame = camera_frame_at(t)
+            if frame is None:
+                continue
+            label_info = panel.label_at(t, soundmap[i]) if (panel is not None and panel.has_labels) else None
+            _write_video_ticks(writer, camera_frame_at, t, soundmap[i], frame, panel, label_info)
 
-    if panel is not None:
-        panel.finalize(t_end)
+        if panel is not None:
+            panel.finalize(t_end)
+
+        writer.release()
+        writer = None
+        _mux_audio(tmp_video, video_path, a_ts, a_d, t0, t_end)
+    finally:
+        if writer is not None:
+            writer.release()
+        tmp_video.unlink(missing_ok=True)
+        tmp_video.with_suffix(".wav").unlink(missing_ok=True)
 
 
 def extract_bag(bag_dir: Path, generator: SoundMapGenerator, camera_flip: bool = False,
-                 video_writer: cv2.VideoWriter | None = None) -> dict:
+                 video_path: Path | None = None) -> dict:
     """Runs the full tick loop for one bag. Returns a dict with the arrays
     that get saved to npz plus dur_s -- raises on any hard failure (too few
-    audio msgs, no camera msgs, bag too short, no valid ticks). If
-    video_writer is given, writes the QC frame for every tick directly to it
-    (streamed, not buffered -- see module docstring)."""
+    audio msgs, no camera msgs, bag too short, no valid ticks). If video_path
+    is given, streams the QC frame for every tick to a silent temp video,
+    then muxes room1 audio onto it (see _mux_audio) to produce the final
+    file at video_path."""
     con = B.open_bag(bag_dir)
     # Auto-detects AudioDataStamped vs plain AudioData per-bag -- see
     # bag_io.py's module docstring.
@@ -425,41 +439,55 @@ def extract_bag(bag_dir: Path, generator: SoundMapGenerator, camera_flip: bool =
         return a_d[j - AUDIO_WIN:j] if j >= AUDIO_WIN else None
 
     camera_frame_at = _camera_frame_cache(c_ts, c_d, camera_flip)
-    panel = VideoPanel(a_ts, a_d, t0, t_end, head_series, vad_series) if video_writer is not None else None
+    tmp_video = video_path.with_name(f"_tmp_{video_path.name}") if video_path is not None else None
+    writer = _video_writer(tmp_video) if tmp_video is not None else None
+    panel = VideoPanel(a_ts, a_d, t0, t_end, head_series, vad_series) if writer is not None else None
 
-    sm_list, gray_list, ts_list = [], [], []
-    for t in ticks:
-        w = audio_window(t)
-        if w is None:
-            continue
-        frame = camera_frame_at(t)
-        if frame is None:
-            continue
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, (SM_SIZE, SM_SIZE), interpolation=cv2.INTER_AREA)
+    try:
+        sm_list, gray_list, ts_list = [], [], []
+        for t in ticks:
+            w = audio_window(t)
+            if w is None:
+                continue
+            frame = camera_frame_at(t)
+            if frame is None:
+                continue
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.resize(gray, (SM_SIZE, SM_SIZE), interpolation=cv2.INTER_AREA)
 
-        sm = generator.generate(w)
+            sm = generator.generate(w)
 
-        sm_list.append(sm.astype(np.float32))
-        gray_list.append(gray)
-        ts_list.append(t)
+            sm_list.append(sm.astype(np.float32))
+            gray_list.append(gray)
+            ts_list.append(t)
 
-        if video_writer is not None:
-            label_info = panel.label_at(t, sm) if panel.has_labels else None
-            _write_video_ticks(video_writer, camera_frame_at, t, sm, frame, panel, label_info)
+            if writer is not None:
+                label_info = panel.label_at(t, sm) if panel.has_labels else None
+                _write_video_ticks(writer, camera_frame_at, t, sm, frame, panel, label_info)
 
-    if panel is not None:
-        panel.finalize(t_end)
+        if panel is not None:
+            panel.finalize(t_end)
 
-    if not sm_list:
-        raise RuntimeError("no valid ticks produced")
+        if not sm_list:
+            raise RuntimeError("no valid ticks produced")
 
-    return {
-        "soundmap": np.stack(sm_list),
-        "gray_camimg": np.stack(gray_list),
-        "tick_ts": np.asarray(ts_list, dtype=np.int64),
-        "dur_s": (t_end - t0) / 1e9,
-    }
+        if writer is not None:
+            writer.release()
+            writer = None
+            _mux_audio(tmp_video, video_path, a_ts, a_d, t0, t_end)
+
+        return {
+            "soundmap": np.stack(sm_list),
+            "gray_camimg": np.stack(gray_list),
+            "tick_ts": np.asarray(ts_list, dtype=np.int64),
+            "dur_s": (t_end - t0) / 1e9,
+        }
+    finally:
+        if writer is not None:
+            writer.release()
+        if tmp_video is not None:
+            tmp_video.unlink(missing_ok=True)
+            tmp_video.with_suffix(".wav").unlink(missing_ok=True)
 
 
 def save_npz(data: dict, out_path: Path) -> None:
@@ -494,6 +522,40 @@ def _video_writer(video_path: Path) -> cv2.VideoWriter:
     )
 
 
+def _mux_audio(tmp_video: Path, final_video: Path, a_ts: np.ndarray, a_d: list,
+               t0: int, t_end: int) -> None:
+    """`cv2.VideoWriter` never writes an audio track -- `tmp_video` is silent.
+    Downmixes room1 mic audio for [t0, t_end] to mono (+30dB gain, matching
+    video-generator/bag2video.py so the QC videos are actually audible) and
+    muxes it onto `tmp_video` via ffmpeg into `final_video`. On ffmpeg failure
+    raises and leaves the tmp video + wav in place for inspection, same as
+    the reference script. No audio messages in range -> just moves tmp_video
+    to final_video as-is (silent), rather than crashing on an empty concat."""
+    lo = int(np.searchsorted(a_ts, t0))
+    hi = int(np.searchsorted(a_ts, t_end, side="right"))
+    if hi <= lo:
+        tmp_video.rename(final_video)
+        return
+    mono = np.concatenate([
+        np.frombuffer(b, np.int16).reshape(-1, CHANNELS).astype(np.float32).mean(axis=1)
+        for b in a_d[lo:hi]
+    ])
+    mono *= 10 ** (30 / 20)
+    mono = np.clip(mono, -32768, 32767).astype(np.int16)
+    tmp_wav = tmp_video.with_suffix(".wav")
+    wavfile.write(tmp_wav, FS, mono)
+
+    r = subprocess.run(
+        ["ffmpeg", "-y", "-i", str(tmp_video), "-i", str(tmp_wav), "-c:v", "libx264",
+         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-shortest", str(final_video)],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f"ffmpeg mux failed: {r.stderr[-2000:]}")
+    tmp_video.unlink(missing_ok=True)
+    tmp_wav.unlink(missing_ok=True)
+
+
 def process_job(job: Job, generator: SoundMapGenerator, force: bool = False, limit: int = 0) -> None:
     out_dir = TRAIN_DATA_DIR if job.pool == "train-data" else TRAIN_DATA_AUX_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -521,9 +583,8 @@ def process_job(job: Job, generator: SoundMapGenerator, force: bool = False, lim
     for bag_dir, info, out_name in todo_full:
         t0 = time.time()
         video_path = VIDEO_ROOT / f"{out_name}.mp4"
-        writer = _video_writer(video_path)
         try:
-            data = extract_bag(bag_dir, generator, camera_flip=job.camera_flip, video_writer=writer)
+            data = extract_bag(bag_dir, generator, camera_flip=job.camera_flip, video_path=video_path)
             save_npz(data, out_dir / f"{out_name}.npz")
             sec = round(time.time() - t0, 1)
             n_ticks = data["tick_ts"].shape[0]
@@ -536,8 +597,6 @@ def process_job(job: Job, generator: SoundMapGenerator, force: bool = False, lim
         except Exception as e:  # noqa: BLE001
             print(f"  FAILED {out_name}: {e}")
             video_path.unlink(missing_ok=True)  # partial/corrupt on failure
-        finally:
-            writer.release()
 
     # Video-only regen runs each bag in its OWN subprocess (see
     # render_one_video_only_subprocess docstring) -- found the hard way that
@@ -580,14 +639,11 @@ def _run_one_video_only(job_label: str, bag_name: str) -> None:
     npz_path = out_dir / f"{out_name}.npz"
     video_path = VIDEO_ROOT / f"{out_name}.mp4"
     VIDEO_ROOT.mkdir(parents=True, exist_ok=True)
-    writer = _video_writer(video_path)
     try:
-        render_video_only(bag_dir, npz_path, writer, camera_flip=job.camera_flip)
+        render_video_only(bag_dir, npz_path, video_path, camera_flip=job.camera_flip)
     except Exception:
         video_path.unlink(missing_ok=True)
-        writer.release()
         raise
-    writer.release()
 
 
 def main():

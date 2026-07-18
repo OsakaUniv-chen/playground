@@ -110,6 +110,12 @@
 
 ![ゲームごとの遠隔操作者頭部yawバイアス](figures/tele_yaw_bias.png)
 
+上図は52局全体（Tele・PSSP・DoA・Random混在）。Teleモードのみ13局に絞ると：
+
+![Teleモードのみの遠隔操作者頭部yawバイアス](figures/tele_yaw_bias_tele_only.png)
+
+- 13名中11名が右偏り（中央値が負）。G11・G12のみ左偏り。
+
 ### 2.3. P(switch)
 
 定義：実際にロボットへ送られた首振り指令（実行レベル）の左右反転回数 ÷ tick数。
