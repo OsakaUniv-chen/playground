@@ -5,11 +5,11 @@ overlay it on the room1 camera with the 4-label / head boxes / speaking box /
 VAD state, and mux with the mic audio into an mp4. Watch it to confirm the
 regenerated sound map actually tracks the speaker BEFORE trusting the numbers.
 
-Self-contained: this file only depends on the other modules in this same
-video-generator/ folder (bag_io, room1_vad, labeling,
-beamform_soundmap). Uses a torch-based frequency-domain beamforming
-sound-map generator (no acoular dependency) — see generator-compare/ for the
-validation that it's a harmless drop-in for the old acoular generator.
+Depends on the other modules in this same soundmap-video/ folder (bag_io,
+room1_vad, labeling) plus the shared PyTorch sound-map generator in the sibling
+../generator-pytorch/ (NewSoundMapAPI): a torch-based frequency-domain
+beamforming generator (no acoular dependency) — see ../generator-compare/ for
+the validation that it's a harmless drop-in for the old acoular generator.
 
     OPENBLAS_NUM_THREADS=1 python bag2video.py
 """
@@ -23,13 +23,15 @@ import cv2
 import numpy as np
 from scipy.io import wavfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+sys.path.insert(0, os.path.join(_HERE, "..", "generator-pytorch"))
 
 import bag_io as B
 import room1_vad as R1
 from labeling import (label_current_sm, mask_speaking_box, plot_annotations,
                       sm_to_color, transform_sm, vad_active_at, get_speaking_box)
-from beamform_soundmap import SoundMapAPI
+from new_soundmap_api import NewSoundMapAPI
 
 # ==== configure here (hardcoded source bag) ================================
 BAG_PATH = "/media/chen/Extreme SSD/WordWolfExp/ROSbag"   # ROSbag root dir
@@ -90,7 +92,7 @@ def main():
     R1.paint_vad_segments(strip, geom, vad_segs, PPS)
     print(f"room1 speaking: {100 * sum(b - a for a, b in vad_segs) / duration_s:.0f}% of clip")
 
-    api = SoundMapAPI()
+    api = NewSoundMapAPI()
     speaking_box = get_speaking_box()
     painter = R1.LabelRunPainter(strip, geom, PPS)
     frames = []

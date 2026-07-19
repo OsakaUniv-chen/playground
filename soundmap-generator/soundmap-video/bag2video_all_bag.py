@@ -6,11 +6,11 @@ with mic audio), but run over a hardcoded list of robot bags instead of one bag.
 Watch the clips to confirm the regenerated sound map tracks the speaker BEFORE
 trusting the numbers.
 
-Self-contained: this file only depends on the other modules in this same
-video-generator/ folder (bag_io, room1_vad, labeling,
-beamform_soundmap). Uses a torch-based frequency-domain beamforming
-sound-map generator (no acoular dependency) — see generator-compare/ for the
-validation that it's a harmless drop-in for the old acoular generator.
+Depends on the other modules in this same soundmap-video/ folder (bag_io,
+room1_vad, labeling) plus the shared PyTorch sound-map generator in the sibling
+../generator-pytorch/ (NewSoundMapAPI): a torch-based frequency-domain
+beamforming generator (no acoular dependency) — see ../generator-compare/ for
+the validation that it's a harmless drop-in for the old acoular generator.
 
 Differences vs bag2video.py:
   * loops over the hardcoded BAG_NAMES list below instead of a single bag;
@@ -23,7 +23,7 @@ Differences vs bag2video.py:
     frame is overlaid with the most-recent tick's SM;
   * defaults to the FULL bag (start-skip only), so frames are STREAMED straight to
     the VideoWriter instead of held in a list (a full game is GBs of frames);
-  * one SoundMapAPI is built once and reused across bags;
+  * one NewSoundMapAPI is built once and reused across bags;
   * overwrites by default (re-renders every bag); pass --skip-existing to resume a
     run and skip bags that already have a {name}_sm_qc.mp4.
 
@@ -44,13 +44,15 @@ import cv2
 import numpy as np
 from scipy.io import wavfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+sys.path.insert(0, os.path.join(_HERE, "..", "generator-pytorch"))
 
 import bag_io as B
 import room1_vad as R1
 from labeling import (get_speaking_box, label_current_sm, mask_speaking_box,
                       plot_annotations, sm_to_color, transform_sm, vad_active_at)
-from beamform_soundmap import SoundMapAPI
+from new_soundmap_api import NewSoundMapAPI
 
 # ==== configure here (hardcoded source bags) ===============================
 BAG_PATH = "/media/chen/Extreme SSD/WordWolfExp/ROSbag"   # ROSbag root dir
@@ -271,7 +273,7 @@ def main():
         bags = bags[:args.limit]
     print(f"{len(bags)} bags to process")
 
-    api = SoundMapAPI()                 # build once, reuse across bags
+    api = NewSoundMapAPI()              # build once, reuse across bags
     speaking_box = get_speaking_box()
     counts = {"ok": 0, "skip": 0, "empty": 0, "fail": 0}
     t_start = time.time()
