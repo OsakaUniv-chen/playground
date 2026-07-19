@@ -47,8 +47,17 @@ import pyarrow.parquet as pq
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
+# Shared utils.py lives in the parent (generator-compare/); the two generators
+# live two levels up under soundmap-generator/.
+_COMPARE = os.path.normpath(os.path.join(_HERE, ".."))
+if _COMPARE not in sys.path:
+    sys.path.insert(0, _COMPARE)
+for _gen_dir in ("generator-acoular", "generator-pytorch"):
+    _p = os.path.normpath(os.path.join(_HERE, "..", "..", _gen_dir))
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-import bag_io as B
+import utils as B
 
 # --- constants (mirror the live pipeline / SPEC §5) ------------------------
 TICK = 0.25            # 4 Hz output grid
@@ -68,7 +77,7 @@ def _latest_idx(ts_arr, t):
 def redetect_headboxes(con, frame_stride):
     """Chronological MediaPipe head-box re-detection from RAW room1 camera.
     Returns (ts[np int64], boxes[list[[left,right]]], carried[list[bool]])."""
-    from head_box import HeadBoxAPI
+    from utils import HeadBoxAPI
     api = HeadBoxAPI()
     tid = B.topic_id(con, B.CAMERA_TOPIC)
     if tid is None:
@@ -107,7 +116,7 @@ def _peak_dist(a, b):
 def process_bag(bag_dir, out_dir, device, frame_stride, save_sm):
     from soundmap_api import SoundMapAPI
     from new_soundmap_api import NewSoundMapAPI
-    from labeling import label_current_sm, vad_active_at
+    from utils import label_current_sm, vad_active_at
 
     m = B.DIR_RE.match(bag_dir.name)
     con = B.open_bag(bag_dir)

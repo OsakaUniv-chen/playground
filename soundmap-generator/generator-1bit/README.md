@@ -1,35 +1,35 @@
 # generator-1bit
 
 1-bit ("sign-bit XOR correlator") acoustic-camera sound-map generator, built
-from the 4-step PoC handed down by the supervisor. Self-contained like
-`../video-generator/`: everything needed to *generate* a sound map lives in
-this folder. It's CPU-only by construction -- no FFT, no float
-multiply-accumulate in the hot path, no torch dependency at all; the whole
-appeal of a 1-bit acoustic camera is that it doesn't need a GPU.
+from the 4-step PoC handed down by the supervisor. CPU-only by construction --
+no FFT, no float multiply-accumulate in the hot path, no torch dependency at
+all; the whole appeal of a 1-bit acoustic camera is that it doesn't need a GPU.
 
-(Originally created as `video-generator-1bit/`, renamed to `generator-1bit/`.)
+This folder holds **only the generator** (no comparison code):
 
 | file | purpose |
 |---|---|
 | `onebit_soundmap.py` | the generator (`OneBitSoundMapGenerator` / `OneBitSoundMapAPI`), same call interface as `beamform_soundmap.SoundMapAPI` |
-| `bag_io.py` / `labeling.py` | ROS2 bag reader + sound-map mask/transform/4-label extraction, copied from `../video-generator/` (self-contained convention) |
-| `compare_video.py` | real-bag side-by-side video: left = FFT beamformer, right = 1-bit |
-| `compare-generator.mp4` | rendered output of the above, on bag `G11_game4_DoA` |
-| `analyze_disagreement.py` | label-only pass over a whole bag: agreement rate by VAD state / confusion matrix / decision margins (no video, much faster) |
-| `save_disagreement_frames.py` | dumps one annotated PNG per disagreeing tick into `results/disagreement_frames/{vad_active,vad_silent}/`, for eyeballing |
-| `validate_synthetic.py` | synthetic point-source correctness/precision check vs the FFT beamformer (no bag needed) |
-| `make_comparison_figure.py` | renders `results/comparison.png` from the synthetic tests |
+| `1bit-soundmap-note.md` | design note |
 
-```bash
-python compare_video.py --bag G11_game4_DoA   # real-data video: pytorch on GPU, 1-bit on CPU
-python validate_synthetic.py                  # synthetic precision check
-python make_comparison_figure.py
+```python
+from onebit_soundmap import OneBitSoundMapAPI   # add this folder to sys.path
+sm = OneBitSoundMapAPI().generate(audio_chunks)  # (64,64) float, CPU-only
 ```
-Run inside the `wolf` virtualenv (needs numpy/scipy/cv2; torch only because
-`compare_video.py`/`validate_synthetic.py` import the *other* generator for
-comparison -- `onebit_soundmap.py` itself never imports torch).
-`compare_video.py` reads from `/media/chen/Extreme SSD/PSSPData/WordWolfExp`
-(the post-2026-07 PSSPData reorg location -- see `train-pssp/CONTEXT.md`).
+
+The head-to-head comparison against the FFT/pytorch beamformer — side-by-side
+video, synthetic precision sweeps, disagreement analysis, `compare-generator.mp4`,
+`results/` — now lives in
+[`../generator-compare/1bit-vs-pytorch/`](../generator-compare/1bit-vs-pytorch/)
+and shares the bag-reader / labeling helpers via `../generator-compare/utils.py`.
+Run it there, inside the `wolf` virtualenv.
+
+(Originally created as `video-generator-1bit/`, renamed to `generator-1bit/`.)
+
+The rest of this note documents the generator's own design and the validation
+that shaped it. The scripts and artifacts it references (`compare_video.py`,
+`validate_synthetic.py`, `results/comparison.png`, …) now live in the
+`1bit-vs-pytorch/` comparison folder above.
 
 ## The 4 steps, and where they live in the code
 

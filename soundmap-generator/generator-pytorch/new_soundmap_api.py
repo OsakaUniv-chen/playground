@@ -24,8 +24,9 @@ import numpy as np
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)                    # resolves `new_sound_map`
-# Reuse the SAME 16-mic geometry as the 'old' generator (fair comparison).
-XML_PATH = os.path.join(_HERE, "soundmap", "acoular", "xml", "minidsp_uma-16.xml")
+# Same 16-mic geometry as the acoular generator (fair comparison); local copy of
+# soundmap/acoular/xml/minidsp_uma-16.xml so this folder is self-contained.
+XML_PATH = os.path.join(_HERE, "minidsp_uma-16.xml")
 
 
 class NewSoundMapAPI:

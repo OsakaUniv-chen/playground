@@ -6,10 +6,16 @@ excluded). Answers: *do the two generators produce the same 4-label
 (L/R/Tele/Others) decision, and how do they differ?* — i.e. is swapping OLD for
 NEW harmless?
 
-This project is **self-contained**: all code it needs (bag I/O, head-box
-detection, labeling, the vendored OLD/acoular and NEW/torch generators) lives in
-this folder. The only external input is the raw rosbag data on the mounted
-experiment SSD.
+This folder holds the **comparison harness only** (the compare/aggregate/inspect
+scripts). The shared bag I/O + head-box detection + labeling helpers live one
+level up in [`../utils.py`](../utils.py); the two generators it drives live two
+levels up under `soundmap-generator/`. The scripts prepend `..` (for `utils`) and
+`../../generator-acoular` / `../../generator-pytorch` to `sys.path`:
+
+- **OLD / acoular** → `../../generator-acoular` (`soundmap_api.SoundMapAPI`)
+- **NEW / torch**   → `../../generator-pytorch` (`new_soundmap_api.NewSoundMapAPI`)
+
+The only external input is the raw rosbag data on the mounted experiment SSD.
 
 ## The two generators
 
@@ -30,10 +36,10 @@ Everything is **recreated from the raw signals** — no recorded `/head/head_box
 - Per tick: the **same** 160-msg audio window ending at `t` is fed to **both**
   generators.
 - Head boxes are **re-detected with MediaPipe** from `/camera/image_raw/compressed`
-  (`head_box.HeadBoxAPI`, faithful to `head_node`); VAD from `/room2_audio/vad`.
+  (`utils.HeadBoxAPI`, faithful to `head_node`); VAD from `/room2_audio/vad`.
   Head box + VAD are **shared** between the generators, so the labeling path is
   identical and any label disagreement is attributable to the generator alone.
-- Each 64×64 map → **identical** labeling path (`labeling.label_current_sm`: mask if
+- Each 64×64 map → **identical** labeling path (`utils.label_current_sm`: mask if
   silent → `exp(x−max)` → colorize → `extract_target7` P87.5/P98) → one of
   L/R/Tele/Others.
 - Per tick we log both labels, both region metrics, raw-map Pearson r, argmax
@@ -46,14 +52,14 @@ numpy 1.x) — see `requirements.txt`. No dedicated venv is required if your
 interpreter already has that set; on this machine it's plain `python3`.
 
 ```bash
-cd generator-compare
+cd soundmap-generator/generator-compare/acoular-vs-pytorch
 OPENBLAS_NUM_THREADS=1 python3 compare_generators.py \
     --bags all --workers 6 --frame-stride 2          # ~8 min/bag; resumable
 python3 aggregate.py                                 # report + plots
 ```
 
 Single bag smoke: `--bags G1_game5_DoA`. `--save-sm` also dumps the raw map stacks.
-`--rosbag-root` overrides the auto-detected mount (`bag_io.resolve_bag_root()`).
+`--rosbag-root` overrides the auto-detected mount (`utils.resolve_bag_root()`).
 
 ## Outputs (`results/`)
 

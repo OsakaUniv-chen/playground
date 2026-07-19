@@ -24,13 +24,22 @@ import pyarrow.parquet as pq
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
+# Shared utils.py lives in the parent (generator-compare/); the two generators
+# live two levels up under soundmap-generator/.
+_COMPARE = os.path.normpath(os.path.join(_HERE, ".."))
+if _COMPARE not in sys.path:
+    sys.path.insert(0, _COMPARE)
+for _gen_dir in ("generator-acoular", "generator-pytorch"):
+    _p = os.path.normpath(os.path.join(_HERE, "..", "..", _gen_dir))
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-import bag_io as B
-from labeling import (mask_speaking_box, transform_sm, sm_to_color,
+import utils as B
+from utils import (mask_speaking_box, transform_sm, sm_to_color,
                       run_extract_target, plot_annotations, vad_active_at,
                       get_speaking_box)
 
@@ -56,7 +65,7 @@ def find_disagreements():
 
 def headbox_at(con, t_ns):
     """Replay MediaPipe (stride FRAME_STRIDE) up to t_ns, return latest processed box."""
-    from head_box import HeadBoxAPI
+    from utils import HeadBoxAPI
     api = HeadBoxAPI()
     tid = B.topic_id(con, B.CAMERA_TOPIC)
     last = [[-99] * 4, [-99] * 4]

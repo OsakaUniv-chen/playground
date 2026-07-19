@@ -1,22 +1,248 @@
-"""Sound-map labeling pipeline (4-label: Left / Right / Teleoperator / Others).
+"""Shared comparison utilities for generator-compare.
 
-Extracted verbatim from the live robot code so the offline analysis reproduces
-the exact decision path:
-  - check_doa.py : get_speaking_box, _get_box_bounds, _compute_metric,
-                   _extract_by_metric, extract_target7, run_extract_target,
-                   HeadBoxProcessor
-  - policy_utils.py : mask_speaking_box_in_sound_map, transform_sound_map,
-                      visualize_sm, was_vad_active_recently
+Consolidates the former bag_io.py + labeling.py + head_box.py — the helpers the
+per-comparison subfolders (acoular-vs-pytorch/, 1bit-vs-pytorch/) share:
 
-Do not change the numeric constants or the branch logic; they define the labels.
+  - ROS2 bag reader + CDR decoders            (was bag_io.py; use `import utils as B`)
+  - 4-label sound-map pipeline                (was labeling.py)
+  - MediaPipe head-box re-detection           (was head_box.py; mediapipe imported lazily)
+
+Do not change the numeric constants or branch logic in the labeling section; they
+define the labels.
 """
 from __future__ import annotations
 
 import bisect
+import re
+import sqlite3
+import struct
+from pathlib import Path
 
 import cv2
 import numpy as np
 
+
+# ==========================================================================
+# bag I/O  (former bag_io.py)
+# ==========================================================================
+DIR_RE = re.compile(r"^G(?P<group>\d+)_game(?P<game>\d+)_(?P<mode>[A-Za-z]+)$")
+
+# Topics used by analysis2 (see docs/ros-topics.md).
+AUDIO_TOPIC = "/audio/audio_raw"
+CAMERA_TOPIC = "/camera/image_raw/compressed"
+ROOM2_CAMERA_TOPIC = "/room2_camera/image_raw/compressed"
+VAD_TOPIC = "/room2_audio/vad"
+MOTORS_TOPIC = "/boxie/boxie_motors"
+# verification-only
+SM_TOPIC = "/sm_without_transform"
+HEAD_TOPIC = "/head/head_box"
+TELE_ORIENT_TOPIC = "/tele/head_orientation"
+
+# ROSbag root candidates: Linux (high-perf PC) first, macOS SSD mount as fallback.
+BAG_ROOT_CANDIDATES = (
+    "/media/chen/Extreme SSD/WordWolfExp/ROSbag",
+    "/Volumes/Extreme SSD/WordWolfExp/ROSbag",
+)
+
+
+def resolve_bag_root(candidates=BAG_ROOT_CANDIDATES) -> str:
+    """First candidate ROSbag root that exists and holds data, else the first candidate.
+
+    Lets the same scripts run on the Linux PC (/media/chen/...) and the Mac
+    (/Volumes/...) with no path edits: if /media/... has no data we switch to
+    /Volumes/... . Returns the first candidate when none are populated so error
+    messages stay stable.
+    """
+    for c in candidates:
+        p = Path(c)
+        if p.is_dir() and any(p.iterdir()):
+            return str(p)
+    return str(candidates[0])
+
+
+def _align(off: int, n: int, base: int = 4) -> int:
+    return off + (-(off - base) % n)
+
+
+def header_stamp_ns(data: bytes):
+    """Extract header.stamp (sec int32 + nanosec uint32) as ns from any stamped msg.
+    Returns None if the payload has no room for a header."""
+    try:
+        sec, nsec = struct.unpack_from("<iI", data, 4)  # after 4-byte encapsulation
+        return sec * 1_000_000_000 + nsec
+    except struct.error:
+        return None
+
+
+# --------------------------------------------------------------------------
+# CDR decoders
+# --------------------------------------------------------------------------
+def decode_audio(data: bytes) -> bytes:
+    """AudioDataStamped -> raw uint8[] payload (int16, 16ch interleaved)."""
+    off = 4 + 8
+    off = _align(off, 4)
+    (slen,) = struct.unpack_from("<I", data, off)
+    off += 4 + slen
+    off = _align(off, 4)
+    (n,) = struct.unpack_from("<I", data, off)
+    off += 4
+    return data[off:off + n]
+
+
+def decode_vad(data: bytes) -> bool:
+    """VadStamped -> bool."""
+    off = 4 + 8
+    off = _align(off, 4)
+    (slen,) = struct.unpack_from("<I", data, off)
+    off += 4 + slen
+    return bool(data[off])
+
+
+def decode_boxie_yaw(data: bytes):
+    """BoxieMotors -> yaw (data[1], int16) or None."""
+    try:
+        off = 4 + 8
+        off = _align(off, 4)
+        (slen,) = struct.unpack_from("<I", data, off)
+        off += 4 + slen
+        off = _align(off, 4)
+        (alen,) = struct.unpack_from("<I", data, off)
+        off += 4
+        if alen < 2:
+            return None
+        off = _align(off, 2)
+        vals = struct.unpack_from(f"<{alen}h", data, off)
+        return vals[1]
+    except struct.error:
+        return None
+
+
+def decode_compressed_image(data: bytes):
+    """sensor_msgs/CompressedImage -> BGR ndarray (or None)."""
+    try:
+        off = 4 + 8
+        off = _align(off, 4)
+        (slen,) = struct.unpack_from("<I", data, off)
+        off += 4 + slen
+        off = _align(off, 4)
+        (flen,) = struct.unpack_from("<I", data, off)
+        off += 4 + flen
+        off = _align(off, 4)
+        (dlen,) = struct.unpack_from("<I", data, off)
+        off += 4
+        buf = np.frombuffer(data, dtype=np.uint8, count=dlen, offset=off)
+        return cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    except (struct.error, ValueError):
+        return None
+
+
+def decode_int32multiarray(data: bytes):
+    """std_msgs/Int32MultiArray -> list[int] (or None)."""
+    try:
+        off = 4
+        off = _align(off, 4)
+        (ndim,) = struct.unpack_from("<I", data, off)
+        off += 4
+        for _ in range(ndim):
+            off = _align(off, 4)
+            (llen,) = struct.unpack_from("<I", data, off)
+            off += 4 + llen
+            off = _align(off, 4)
+            off += 8
+        off = _align(off, 4)
+        off += 4
+        off = _align(off, 4)
+        (n,) = struct.unpack_from("<I", data, off)
+        off += 4
+        off = _align(off, 4)
+        return list(struct.unpack_from(f"<{n}i", data, off))
+    except struct.error:
+        return None
+
+
+def decode_vector3stamped(data: bytes):
+    """geometry_msgs/Vector3Stamped -> (x, y, z) float64 (verification only)."""
+    try:
+        off = 4 + 8
+        off = _align(off, 4)
+        (slen,) = struct.unpack_from("<I", data, off)
+        off += 4 + slen
+        off = _align(off, 8)
+        return struct.unpack_from("<3d", data, off)
+    except struct.error:
+        return None
+
+
+TOPIC_DECODERS = {
+    AUDIO_TOPIC: decode_audio,
+    VAD_TOPIC: decode_vad,
+    MOTORS_TOPIC: decode_boxie_yaw,
+    CAMERA_TOPIC: decode_compressed_image,
+    ROOM2_CAMERA_TOPIC: decode_compressed_image,
+    SM_TOPIC: decode_compressed_image,
+    HEAD_TOPIC: decode_int32multiarray,
+    TELE_ORIENT_TOPIC: decode_vector3stamped,
+}
+
+
+# --------------------------------------------------------------------------
+# sqlite helpers
+# --------------------------------------------------------------------------
+def find_db_files(game_dir: Path) -> list[Path]:
+    dbs = []
+    for db in sorted(Path(game_dir).glob("*.db3")):
+        try:
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+            tables = {r[0] for r in con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+            if {"topics", "messages"} <= tables:
+                dbs.append(db)
+            con.close()
+        except sqlite3.Error:
+            continue
+    return dbs
+
+
+def topic_id(con: sqlite3.Connection, name: str):
+    row = con.execute("SELECT id FROM topics WHERE name = ?", (name,)).fetchone()
+    return row[0] if row else None
+
+
+def read_series(con: sqlite3.Connection, topic: str, decode=None):
+    """Return [(record_ts_ns, decoded), ...] ascending. Default decoder by topic."""
+    tid = topic_id(con, topic)
+    if tid is None:
+        return []
+    if decode is None:
+        decode = TOPIC_DECODERS.get(topic, lambda d: d)
+    out = []
+    for ts, data in con.execute(
+        "SELECT timestamp, data FROM messages WHERE topic_id = ? ORDER BY timestamp",
+            (tid,)):
+        out.append((ts, decode(data)))
+    return out
+
+
+def iter_messages(con: sqlite3.Connection, topic: str):
+    """Yield (record_ts_ns, raw_bytes) ascending for streaming cursors."""
+    tid = topic_id(con, topic)
+    if tid is None:
+        return
+    yield from con.execute(
+        "SELECT timestamp, data FROM messages WHERE topic_id = ? ORDER BY timestamp",
+        (tid,))
+
+
+def open_bag(bag_dir) -> sqlite3.Connection:
+    dbs = find_db_files(Path(bag_dir))
+    if not dbs:
+        raise FileNotFoundError(f"no readable .db3 in {bag_dir}")
+    return sqlite3.connect(f"file:{dbs[0]}?mode=ro", uri=True)
+
+
+# ==========================================================================
+# 4-label pipeline  (former labeling.py)
+# ==========================================================================
 LABELS = ("Left", "Right", "Teleoperator", "Others")
 
 # Fixed teleoperator "speaking box" used as a label region (check_doa.get_speaking_box).
@@ -304,3 +530,108 @@ def build_clip_frame_from_gray(sm_64, vad_active, gray64):
 def build_clip_frame(sm_64, vad_active, frame_bgr, sm_size=64):
     """PSSP clip frame (mode_pssp.update_clip): [fused, gray], each sm_size x sm_size."""
     return build_clip_frame_from_gray(sm_64, vad_active, frame_to_gray64(frame_bgr, sm_size))
+
+
+# ==========================================================================
+# Head-box re-detection  (former head_box.py; HeadBoxProcessor is defined above)
+# ==========================================================================
+class HeadDetector:
+    """Verbatim from head_node.py."""
+
+    def __init__(self, model_selection: int = 1, min_detection_confidence: float = 0.5,
+                 history_max_count: int = 6):
+        import mediapipe as mp  # lazy: only head-box re-detection needs it
+        self.mp_face_detection = mp.solutions.face_detection
+        self.face_detection = self.mp_face_detection.FaceDetection(
+            model_selection=model_selection,
+            min_detection_confidence=min_detection_confidence,
+        )
+        self.last_valid_left_box = [-99, -99, -99, -99]
+        self.last_valid_right_box = [-99, -99, -99, -99]
+        self.max_x_jump_px = 100
+
+    def is_reasonable_update(self, new_box, last_box):
+        if last_box[0] == -99:
+            return True
+        return abs(new_box[0] - last_box[0]) <= self.max_x_jump_px
+
+    def detect_heads(self, img, img_sz=1080):
+        rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        results = self.face_detection.process(rgb_image)
+
+        head_bounding_boxes = []
+        if results.detections:
+            image_height, image_width, _ = img.shape
+            for detection in results.detections:
+                bbox_data = detection.location_data.relative_bounding_box
+                x_min = int(bbox_data.xmin * image_width)
+                y_min = int(bbox_data.ymin * image_height)
+                width = int(bbox_data.width * image_width)
+                height = int(bbox_data.height * image_height)
+
+                center_x = x_min + width / 2
+                center_y = y_min + height / 2
+                new_width = width * 2
+                new_height = height * 2
+                x_min = int(center_x - new_width / 2)
+                y_min = int(center_y - new_height / 2)
+                width = int(new_width)
+                height = int(new_height)
+
+                x_min = max(0, x_min)
+                y_min = max(0, y_min)
+                width = min(image_width - x_min, width)
+                height = min(image_height - y_min, height)
+                head_bounding_boxes.append([x_min, y_min, width, height])
+
+            mid_x = image_width / 2
+            left_boxes = []
+            right_boxes = []
+            for box in head_bounding_boxes:
+                box_center_x = box[0] + box[2] / 2
+                if box_center_x < mid_x:
+                    left_boxes.append(box)
+                else:
+                    right_boxes.append(box)
+
+            if left_boxes:
+                candidate_left = max(left_boxes, key=lambda box: box[2] * box[3])
+                if self.is_reasonable_update(candidate_left, self.last_valid_left_box):
+                    self.last_valid_left_box = candidate_left
+            if right_boxes:
+                candidate_right = max(right_boxes, key=lambda box: box[2] * box[3])
+                if self.is_reasonable_update(candidate_right, self.last_valid_right_box):
+                    self.last_valid_right_box = candidate_right
+
+            head_bounding_boxes = [
+                self.last_valid_left_box.copy(),
+                self.last_valid_right_box.copy(),
+            ]
+        else:
+            head_bounding_boxes = [
+                self.last_valid_left_box.copy(),
+                self.last_valid_right_box.copy(),
+            ]
+        return head_bounding_boxes
+
+
+class HeadBoxAPI:
+    """Stateful: feed room1 frames in chronological order.
+
+    detect(frame_bgr) -> [left_box, right_box] after HeadDetector persistence
+    AND HeadBoxProcessor carry-over, matching the live two-stage pipeline.
+    `carried` in the return of detect_with_flag() marks a HeadBoxProcessor fallback.
+    """
+
+    def __init__(self):
+        self.detector = HeadDetector()
+        self.hb_processor = HeadBoxProcessor()
+
+    def detect(self, frame_bgr):
+        boxes, _ = self.detect_with_flag(frame_bgr)
+        return boxes
+
+    def detect_with_flag(self, frame_bgr):
+        left, right = self.detector.detect_heads(frame_bgr)
+        processed, carried = self.hb_processor.process([left, right])
+        return processed, carried

@@ -17,11 +17,20 @@ import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "video-generator"))
+# Reused generators + shared utils now live outside this folder:
+#   ../../generator-pytorch/new_soundmap_api.py     (FFT/pytorch reference generator)
+#   ../../generator-1bit/onebit_soundmap.py          (the 1-bit generator)
+#   ../utils.py                                       (shared comparison helpers)
+for _p in (os.path.join(_HERE, "..", "..", "generator-pytorch"),
+           os.path.join(_HERE, "..", "..", "generator-1bit"),
+           os.path.join(_HERE, "..")):
+    _p = os.path.normpath(_p)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-import bag_io as B
-from labeling import get_speaking_box, label_current_sm, vad_active_at
-from beamform_soundmap import SoundMapAPI
+import utils as B
+from utils import get_speaking_box, label_current_sm, vad_active_at
+from new_soundmap_api import NewSoundMapAPI as SoundMapAPI
 from onebit_soundmap import OneBitSoundMapAPI
 from compare_video import (PANEL, HEADER_H, TITLE_H, TIME_H, GAP, WHITE, GREY,
                            YELLOW, GREEN, _text, render_column)

@@ -9,8 +9,8 @@ correctness is validated with a controlled simulation instead of real audio:
      chosen SNR, quantize to int16 -- i.e. build a byte-identical audio_chunk
      to what bag_io.decode_audio would hand either generator.
   2. Feed the SAME synthetic chunk to both:
-       - beamform_soundmap.SoundMapAPI      (../video-generator, FFT power sum)
-       - onebit_soundmap.OneBitSoundMapAPI  (this folder, bit-shift + XOR)
+       - new_soundmap_api.NewSoundMapAPI    (../../generator-pytorch, FFT power sum)
+       - onebit_soundmap.OneBitSoundMapAPI  (../../generator-1bit, bit-shift + XOR)
   3. Compare peak-pixel localization error against the known ground truth, and
      the Pearson correlation between the two normalized maps, across a range
      of SNRs. This is exactly the question "does 1-bit degrade precision?"
@@ -30,10 +30,19 @@ from scipy.signal import butter, sosfiltfilt
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "video-generator"))
+# Reused generators + shared utils now live outside this folder:
+#   ../../generator-pytorch/new_soundmap_api.py     (FFT/pytorch reference generator)
+#   ../../generator-1bit/onebit_soundmap.py          (the 1-bit generator)
+#   ../utils.py                                       (shared comparison helpers)
+for _p in (os.path.join(_HERE, "..", "..", "generator-pytorch"),
+           os.path.join(_HERE, "..", "..", "generator-1bit"),
+           os.path.join(_HERE, "..")):
+    _p = os.path.normpath(_p)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from onebit_soundmap import OneBitSoundMapAPI, MIC_POSITIONS  # noqa: E402
-from beamform_soundmap import SoundMapAPI  # noqa: E402
+from new_soundmap_api import NewSoundMapAPI as SoundMapAPI  # noqa: E402
 
 FS = 44100
 CHANNELS = 16
@@ -73,7 +82,7 @@ def synthesize(source_xyz, snr_db, rng):
     mic_sig += noise
 
     crop = mic_sig[GUARD:GUARD + N]
-    # Raw mic counts stay well below int16 full-scale (beamform_soundmap.py applies
+    # Raw mic counts stay well below int16 full-scale (the FFT generator applies
     # a +30dB/x31.6 gain internally before re-quantizing to int16, and pushing this
     # target much above ~100 saturates its [0,160]dB output almost everywhere --
     # a scaling artifact of this synthetic harness, not a beamforming difference).

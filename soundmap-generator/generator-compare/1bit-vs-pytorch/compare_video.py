@@ -6,7 +6,7 @@ side, and burn in each generator's per-map processing time (this-tick ms + runni
 mean) plus the 4-label decision. A header bar shows the live speedup and whether
 the two labels agree. Mux with the mic audio into an mp4.
 
-  LEFT  = ../video-generator/beamform_soundmap.SoundMapAPI  (FFT power, 2000-8000Hz)
+  LEFT  = generator-pytorch/new_soundmap_api.NewSoundMapAPI (FFT power, 2000-8000Hz)
                                                              GPU by default (--pytorch-device)
   RIGHT = onebit_soundmap.OneBitSoundMapAPI                 (bit-shift + XOR, always CPU --
                                                              not needing a GPU is the point)
@@ -18,16 +18,15 @@ never uses one (`OneBitSoundMapGenerator` has no GPU path at all). Pass
 `--pytorch-device cpu` to instead compare both on CPU only.
 
 Head boxes + VAD are shared, so any label difference is the beamforming
-algorithm alone. Same structure as generator-compare/compare_video.py.
-onebit_soundmap.py/labeling.py/bag_io.py are local copies (self-contained);
-beamform_soundmap.py is reused directly from ../video-generator/ rather than
-duplicating a ~340-line file (see validate_synthetic.py in this folder for the
-same pattern).
+algorithm alone. Same structure as acoular-vs-pytorch/compare_video.py.
+The generators are imported from their own folders (onebit from
+../../generator-1bit, the FFT/pytorch one from ../../generator-pytorch) and the
+bag-reader / labeling helpers from ../utils.py -- nothing is duplicated here.
 
     python3 compare_video.py --bag G11_game4_DoA
 
 Deliberately does NOT cap OPENBLAS_NUM_THREADS/OMP_NUM_THREADS the way
-generator-compare/compare_video.py does -- that cap exists there to avoid
+acoular-vs-pytorch/compare_video.py does -- that cap exists there to avoid
 oversubscription when compare_generators.py runs many bags in parallel
 worker PROCESSES. This script is single-process, and capping OMP threads
 also throttles the FFT beamformer's torch CPU einsum path down to 1 thread
@@ -51,12 +50,21 @@ from scipy.io import wavfile
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "video-generator"))
+# Reused generators + shared utils now live outside this folder:
+#   ../../generator-pytorch/new_soundmap_api.py     (FFT/pytorch reference generator)
+#   ../../generator-1bit/onebit_soundmap.py          (the 1-bit generator)
+#   ../utils.py                                       (shared comparison helpers)
+for _p in (os.path.join(_HERE, "..", "..", "generator-pytorch"),
+           os.path.join(_HERE, "..", "..", "generator-1bit"),
+           os.path.join(_HERE, "..")):
+    _p = os.path.normpath(_p)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-import bag_io as B
-from labeling import (get_speaking_box, label_current_sm, mask_speaking_box,
+import utils as B
+from utils import (get_speaking_box, label_current_sm, mask_speaking_box,
                       plot_annotations, sm_to_color, transform_sm, vad_active_at)
-from beamform_soundmap import SoundMapAPI
+from new_soundmap_api import NewSoundMapAPI as SoundMapAPI
 from onebit_soundmap import OneBitSoundMapAPI
 
 # ==== defaults ============================================================

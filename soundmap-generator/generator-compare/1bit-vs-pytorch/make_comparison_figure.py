@@ -9,7 +9,16 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "video-generator"))
+# Reused generators + shared utils now live outside this folder:
+#   ../../generator-pytorch/new_soundmap_api.py     (FFT/pytorch reference generator)
+#   ../../generator-1bit/onebit_soundmap.py          (the 1-bit generator)
+#   ../utils.py                                       (shared comparison helpers)
+for _p in (os.path.join(_HERE, "..", "..", "generator-pytorch"),
+           os.path.join(_HERE, "..", "..", "generator-1bit"),
+           os.path.join(_HERE, "..")):
+    _p = os.path.normpath(_p)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import matplotlib
 matplotlib.use("Agg")
@@ -18,7 +27,7 @@ import numpy as np
 from scipy.signal import butter, sosfiltfilt
 
 from onebit_soundmap import OneBitSoundMapAPI, MIC_POSITIONS
-from beamform_soundmap import SoundMapAPI
+from new_soundmap_api import NewSoundMapAPI as SoundMapAPI
 import validate_synthetic as vs
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")

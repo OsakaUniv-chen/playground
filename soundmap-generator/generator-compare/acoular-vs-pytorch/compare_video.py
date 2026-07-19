@@ -32,9 +32,18 @@ from scipy.io import wavfile
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
+# Shared utils.py lives in the parent (generator-compare/); the two generators
+# live two levels up under soundmap-generator/.
+_COMPARE = os.path.normpath(os.path.join(_HERE, ".."))
+if _COMPARE not in sys.path:
+    sys.path.insert(0, _COMPARE)
+for _gen_dir in ("generator-acoular", "generator-pytorch"):
+    _p = os.path.normpath(os.path.join(_HERE, "..", "..", _gen_dir))
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-import bag_io as B
-from labeling import (get_speaking_box, label_current_sm, mask_speaking_box,
+import utils as B
+from utils import (get_speaking_box, label_current_sm, mask_speaking_box,
                       plot_annotations, sm_to_color, transform_sm, vad_active_at)
 from soundmap_api import SoundMapAPI
 from new_soundmap_api import NewSoundMapAPI
