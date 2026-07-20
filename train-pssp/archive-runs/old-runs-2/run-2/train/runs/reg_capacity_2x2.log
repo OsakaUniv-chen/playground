@@ -1,0 +1,19 @@
+run: /home/chen/Playground/train-pssp/run-2/train/runs/reg_capacity_2x2  clip_len=10  bs=32  lr=0.001  sm_ratio=0.5  N_S=2  N_T=2  augment=noise_ratio
+datasets loaded in 11s: combined_train=116227, chat_val=611, wordwolfexp_test=1481, grpmtg_test=5797
+model ready on cuda, 10,211,522 params, drop=0.2, drop_path=0.2
+epoch 1/200  lr=1.00e-03  decays=0  train_loss=0.004994  chat: pd=6.36 psr=73.73%  wordwolfexp: pd=10.00 psr=67.97%  grpmtg: pd=7.07 psr=59.34%  overall_pd_mean=7.81  (761s)
+epoch 2/200  lr=1.00e-03  decays=0  train_loss=0.004715  chat: pd=6.32 psr=73.85%  wordwolfexp: pd=9.30 psr=68.12%  grpmtg: pd=7.23 psr=58.78%  overall_pd_mean=7.62  (761s)
+epoch 3/200  lr=1.00e-03  decays=0  train_loss=0.004661  chat: pd=6.24 psr=74.10%  wordwolfexp: pd=9.54 psr=67.49%  grpmtg: pd=7.12 psr=59.03%  overall_pd_mean=7.64  (760s)
+epoch 4/200  lr=1.00e-03  decays=0  train_loss=0.004617  chat: pd=6.23 psr=74.63%  wordwolfexp: pd=9.50 psr=66.42%  grpmtg: pd=7.30 psr=60.01%  overall_pd_mean=7.67  (761s)
+epoch 5/200  lr=1.00e-03  decays=0  train_loss=0.004578  chat: pd=6.37 psr=74.26%  wordwolfexp: pd=9.38 psr=67.85%  grpmtg: pd=7.29 psr=58.49%  overall_pd_mean=7.68  (761s)
+epoch 6/200  lr=5.00e-04  decays=1  train_loss=0.004444  chat: pd=6.24 psr=74.18%  wordwolfexp: pd=9.48 psr=68.43%  grpmtg: pd=8.04 psr=52.59%  overall_pd_mean=7.92  (761s)
+epoch 7/200  lr=5.00e-04  decays=1  train_loss=0.004351  chat: pd=6.29 psr=73.89%  wordwolfexp: pd=9.74 psr=66.15%  grpmtg: pd=8.07 psr=52.22%  overall_pd_mean=8.04  (760s)
+epoch 8/200  lr=5.00e-04  decays=1  train_loss=0.004273  chat: pd=6.69 psr=71.79%  wordwolfexp: pd=9.44 psr=67.17%  grpmtg: pd=7.99 psr=52.81%  overall_pd_mean=8.04  (761s)
+epoch 9/200  lr=2.50e-04  decays=2  train_loss=0.004098  chat: pd=6.99 psr=70.60%  wordwolfexp: pd=10.13 psr=64.49%  grpmtg: pd=8.63 psr=47.60%  overall_pd_mean=8.58  (761s)
+epoch 10/200  lr=2.50e-04  decays=2  train_loss=0.003988  chat: pd=7.15 psr=69.53%  wordwolfexp: pd=10.46 psr=62.77%  grpmtg: pd=8.14 psr=51.76%  overall_pd_mean=8.58  (761s)
+epoch 11/200  lr=2.50e-04  decays=2  train_loss=0.003903  chat: pd=7.16 psr=69.78%  wordwolfexp: pd=11.76 psr=57.86%  grpmtg: pd=8.44 psr=49.65%  overall_pd_mean=9.12  (761s)
+epoch 12/200  lr=1.25e-04  decays=3  train_loss=0.003756  chat: pd=7.72 psr=67.19%  wordwolfexp: pd=12.85 psr=53.80%  grpmtg: pd=8.71 psr=47.71%  overall_pd_mean=9.76  (761s)
+epoch 13/200  lr=1.25e-04  decays=3  train_loss=0.003680  chat: pd=6.91 psr=70.81%  wordwolfexp: pd=12.41 psr=55.35%  grpmtg: pd=8.59 psr=49.18%  overall_pd_mean=9.30  (761s)
+epoch 14/200  lr=1.25e-04  decays=3  train_loss=0.003623  chat: pd=7.32 psr=69.20%  wordwolfexp: pd=14.31 psr=47.93%  grpmtg: pd=8.80 psr=47.71%  overall_pd_mean=10.15  (761s)
+early stopping at epoch 14 (best overall_pd_mean=7.6187, 3 lr decays)
+done. best model -> /home/chen/Playground/train-pssp/run-2/train/runs/reg_capacity_2x2/best_model.pt, log -> /home/chen/Playground/train-pssp/run-2/train/runs/reg_capacity_2x2/log.csv

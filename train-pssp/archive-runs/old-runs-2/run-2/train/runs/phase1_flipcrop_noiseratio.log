@@ -1,0 +1,28 @@
+run: /home/chen/Playground/train-pssp/run-2/train/runs/phase1_flipcrop_noiseratio  clip_len=10  bs=32  lr=0.001  sm_ratio=0.5  N_S=4  N_T=4  augment=both
+datasets loaded in 11s: combined_train=116227, chat_val=611, wordwolfexp_test=1481, grpmtg_test=5797
+model ready on cuda, 13,181,570 params, drop=0.2, drop_path=0.2
+epoch 1/200  lr=1.00e-03  decays=0  train_loss=0.005204  chat: pd=6.41 psr=73.77%  wordwolfexp: pd=9.37 psr=68.33%  grpmtg: pd=7.53 psr=58.25%  overall_pd_mean=7.77  (544s)
+epoch 2/200  lr=1.00e-03  decays=0  train_loss=0.004852  chat: pd=6.29 psr=73.81%  wordwolfexp: pd=9.50 psr=68.09%  grpmtg: pd=7.41 psr=59.32%  overall_pd_mean=7.73  (544s)
+epoch 3/200  lr=1.00e-03  decays=0  train_loss=0.004806  chat: pd=6.37 psr=73.85%  wordwolfexp: pd=9.23 psr=67.75%  grpmtg: pd=7.25 psr=59.77%  overall_pd_mean=7.61  (545s)
+epoch 4/200  lr=1.00e-03  decays=0  train_loss=0.004773  chat: pd=6.20 psr=74.84%  wordwolfexp: pd=9.24 psr=68.27%  grpmtg: pd=7.85 psr=58.24%  overall_pd_mean=7.76  (545s)
+epoch 5/200  lr=1.00e-03  decays=0  train_loss=0.004753  chat: pd=6.16 psr=74.63%  wordwolfexp: pd=9.16 psr=68.58%  grpmtg: pd=7.42 psr=59.28%  overall_pd_mean=7.58  (547s)
+epoch 6/200  lr=1.00e-03  decays=0  train_loss=0.004734  chat: pd=6.36 psr=73.85%  wordwolfexp: pd=9.35 psr=67.26%  grpmtg: pd=7.69 psr=58.30%  overall_pd_mean=7.80  (545s)
+epoch 7/200  lr=1.00e-03  decays=0  train_loss=0.004715  chat: pd=6.15 psr=74.55%  wordwolfexp: pd=9.12 psr=68.26%  grpmtg: pd=7.48 psr=59.01%  overall_pd_mean=7.58  (546s)
+epoch 8/200  lr=1.00e-03  decays=0  train_loss=0.004698  chat: pd=6.16 psr=75.00%  wordwolfexp: pd=9.12 psr=68.41%  grpmtg: pd=7.15 psr=59.79%  overall_pd_mean=7.48  (545s)
+epoch 9/200  lr=1.00e-03  decays=0  train_loss=0.004681  chat: pd=6.12 psr=74.92%  wordwolfexp: pd=9.28 psr=67.61%  grpmtg: pd=7.50 psr=59.50%  overall_pd_mean=7.63  (546s)
+epoch 10/200  lr=1.00e-03  decays=0  train_loss=0.004664  chat: pd=6.23 psr=74.26%  wordwolfexp: pd=9.05 psr=68.65%  grpmtg: pd=7.55 psr=58.21%  overall_pd_mean=7.61  (546s)
+epoch 11/200  lr=1.00e-03  decays=0  train_loss=0.004646  chat: pd=6.12 psr=74.67%  wordwolfexp: pd=9.10 psr=68.55%  grpmtg: pd=7.20 psr=59.12%  overall_pd_mean=7.47  (546s)
+epoch 12/200  lr=1.00e-03  decays=0  train_loss=0.004629  chat: pd=6.17 psr=74.75%  wordwolfexp: pd=9.20 psr=67.87%  grpmtg: pd=7.54 psr=58.63%  overall_pd_mean=7.64  (546s)
+epoch 13/200  lr=1.00e-03  decays=0  train_loss=0.004609  chat: pd=6.15 psr=74.42%  wordwolfexp: pd=9.20 psr=67.82%  grpmtg: pd=7.43 psr=58.99%  overall_pd_mean=7.59  (545s)
+epoch 14/200  lr=1.00e-03  decays=0  train_loss=0.004594  chat: pd=6.31 psr=74.10%  wordwolfexp: pd=9.31 psr=67.46%  grpmtg: pd=7.51 psr=58.13%  overall_pd_mean=7.71  (546s)
+epoch 15/200  lr=5.00e-04  decays=1  train_loss=0.004498  chat: pd=6.26 psr=74.34%  wordwolfexp: pd=9.38 psr=66.90%  grpmtg: pd=7.47 psr=57.94%  overall_pd_mean=7.70  (544s)
+epoch 16/200  lr=5.00e-04  decays=1  train_loss=0.004445  chat: pd=6.36 psr=73.40%  wordwolfexp: pd=9.42 psr=66.92%  grpmtg: pd=7.66 psr=56.84%  overall_pd_mean=7.82  (542s)
+epoch 17/200  lr=5.00e-04  decays=1  train_loss=0.004409  chat: pd=6.33 psr=73.60%  wordwolfexp: pd=9.49 psr=66.54%  grpmtg: pd=7.74 psr=56.19%  overall_pd_mean=7.85  (544s)
+epoch 18/200  lr=2.50e-04  decays=2  train_loss=0.004319  chat: pd=6.42 psr=73.11%  wordwolfexp: pd=9.44 psr=67.15%  grpmtg: pd=8.09 psr=53.38%  overall_pd_mean=7.98  (545s)
+epoch 19/200  lr=2.50e-04  decays=2  train_loss=0.004275  chat: pd=6.46 psr=72.94%  wordwolfexp: pd=9.92 psr=64.52%  grpmtg: pd=7.81 psr=55.27%  overall_pd_mean=8.06  (544s)
+epoch 20/200  lr=2.50e-04  decays=2  train_loss=0.004235  chat: pd=6.69 psr=71.55%  wordwolfexp: pd=9.76 psr=65.35%  grpmtg: pd=7.65 psr=56.37%  overall_pd_mean=8.03  (544s)
+epoch 21/200  lr=1.25e-04  decays=3  train_loss=0.004168  chat: pd=6.74 psr=71.59%  wordwolfexp: pd=10.38 psr=62.57%  grpmtg: pd=7.80 psr=55.31%  overall_pd_mean=8.31  (545s)
+epoch 22/200  lr=1.25e-04  decays=3  train_loss=0.004135  chat: pd=6.82 psr=71.22%  wordwolfexp: pd=9.91 psr=65.20%  grpmtg: pd=7.85 psr=54.83%  overall_pd_mean=8.20  (544s)
+epoch 23/200  lr=1.25e-04  decays=3  train_loss=0.004104  chat: pd=6.92 psr=70.76%  wordwolfexp: pd=10.18 psr=63.88%  grpmtg: pd=7.78 psr=55.85%  overall_pd_mean=8.29  (543s)
+early stopping at epoch 23 (best overall_pd_mean=7.4724, 3 lr decays)
+done. best model -> /home/chen/Playground/train-pssp/run-2/train/runs/phase1_flipcrop_noiseratio/best_model.pt, log -> /home/chen/Playground/train-pssp/run-2/train/runs/phase1_flipcrop_noiseratio/log.csv

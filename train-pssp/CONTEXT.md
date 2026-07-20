@@ -1,820 +1,582 @@
-# PSSP 模型 —— 项目记录
+# PSSP 模型 —— 项目记录（新PC，run-1 起）
 
-## 项目是什么
+**这份文件只记录 run-1 及以后在新PC上产生的新知识。** 旧PC上8轮的完整历史
+（项目背景、已验证的方法论决定、数据集细节、踩过的坑、逐轮实验结果）全部保留在
+`archive-runs/old-runs-1/CONTEXT.md`，本文件不重复摘抄——需要历史背景/方法论
+依据时去查那份文件，这里默认读者已经看过或会去查。
 
-PSSP = 预测**下一个说话人在声图（sound map）中的位置**。声图是麦克风阵列音频通过
-波束成形得到的房间二维热力图，模型输入过去若干帧的声图+摄像头画面序列，预测未来
-几帧的声图。核心评估指标是**预测峰值位置的定位精度**，不是逐像素重建误差。
+## 项目是什么（一句话）
 
-**背景**：代码是负责人独自写的（无AI辅助、无git历史），用了一段时间后决定重新
-审视整个流程。信心缺口涉及四个方面：模型架构选择、训练超参数、数据流程正确性、
-评估指标有效性——默认不假设任何一部分是对的，逐一排查。这次重启的目标是找到真正的
-性能瓶颈，而不是简单地用新数据重跑一遍训练。
+PSSP = 预测下一个说话人在声图（声源热力图）中的位置，输入过去若干帧的声图+
+摄像头画面序列，预测未来几帧的声图，核心指标是预测峰值位置的定位精度。完整
+背景见 `archive-runs/old-runs-1/CONTEXT.md`"项目是什么"一节。
+
+## 2026-07-18 迁移到新PC
+
+工作区换到了一台GPU更强、显存更大的新PC（RTX 3090，24GB显存）。旧PC上的8轮
+全部归档到 `archive-runs/old-runs-1/`（连同当时的 `CONTEXT.md`）。新PC上的
+第一轮工作 `run-1/`（chat-only，超参消融）已完成并归档到
+`archive-runs/old-runs-2/run-1/`（2026-07-18，见下"run-1归档"）。当前活跃的
+曾经是 `run-2/`（chat+WordWolfExp+GRP_meeting混合训练池）。**run-2已收尾
+并归档（2026-07-21）**：Phase1（121-bag混合池）是最终锁定的配方，Phase 2~4/
+噪声排查/过拟合探针/正则化排查/157-bag held-out测试这一整条后续排查全部
+是负责人主动要求做的补充验证，结论是"当前配方已经追不动了，Phase1就是
+这个阶段能拿到的最终结果"——见下"run-2结论摘要（已收尾）"。计划见
+`archive-runs/old-runs-2/run-2/PLAN.md`（已标记收尾）。
 
 ## 仓库结构（当前状态）
 
 ```
 train-pssp/
-  CONTEXT.md                # 本文件
-  preprocessing/            # 统一的原始数据处理入口（rosbag → npz + QC视频）
-    bag_io.py                 # sqlite3直读bag + 手写CDR解码，不依赖ROS2
-    soundmap.py                # 纯PyTorch波束成形声图生成器
-    build_dataset.py            # JOBS注册表驱动的提取脚本，见"数据集"一节
-    DATA_REPORT.md               # 数据来源/适用性/最终规模的详细记录
-  train-data/                # 默认训练用的npz池，所有run共享
-  train-data-aux/            # 结构性存疑/成分混杂的数据，不进默认训练（2026-07-12
-                                # PSSPData整盘重组重跑后暂时清空，负责人要求全部先
-                                # 进train-data，后续再判断哪些挪过来）
-  soundmap-videos/           # 每个bag的目视QC视频（主画面+下方VAD/label滚动面板，
-                                # 见"数据集"一节）
-  access-model/              # 旧模型（exp4），只做推理，不再训练
-    predict.py / simvp.py / configs/ / weights/
-    access-model-train/        # 产出exp4权重的旧训练代码存档（不再运行/修改）
-  archive-runs/               # 已完成使命的run，只读存档
-    first-run/                  # 第1轮：归一化+lr修复验证
-    second-run/                  # 第2轮：loss函数消融（MSE/BCE/KL）
-    third-run/                   # 第3轮：数据规模+chat泛化测试
-    fourth-run/                  # 第4轮：SimVP vs DMVFN架构对比（结论：DMVFN败）
-    fifth-run/                   # 第5轮：数据规模/多样性测试#2（结论：仍未突破天花板，
-                                    # 但挖出lr/滑窗密度/数据增强三个真实训练管线差异）
-    sixth-run/                   # 第6轮：只用chat小规模消融lr/滑窗密度/数据增强
-                                    # （结论：lr=1e-3+数据增强追平旧模型，dense不是必需）
-    seventh-run/                 # 第7轮：搬到278-bag全量+WordWolfExp+chat子集，扫lr
-                                    # （结论：没推广；lr只让曲线健康，动不了天花板）
-  eighth-run/                 # 第8轮：换loss监督目标（soft-argmax峰值位置）+更长窗口，
-                                 # 攻七轮都没解决的位置相关性天花板，chat上小测
-    train/ / evaluation/ / RESULTS.md  (train/losses.py 是核心新增)
+  CONTEXT.md                 # 本文件，只记录run-1起的新知识
+  preprocessing/              # 原始数据处理入口，未变，详见archive里的CONTEXT.md
+  train-data/                 # 训练用npz池，所有run共享，未变
+  soundmap-videos/            # QC视频，未变
+  access-model/                # 旧模型(exp4)，只做推理，未变
+  archive-runs/
+    old-runs-1/                 # 旧PC上做的全部8轮 + 当时的CONTEXT.md，只读存档
+    old-runs-2/                 # 新PC上已完成的run，只读存档
+      run-1/                      # chat-only配方+超参消融，见下方"run-1新增的方法论决定"
+      run-2/                      # 121-bag混合池+后续排查，见下方"run-2结论摘要（已收尾）"
 ```
-`archive-runs/` 下的 run 路径深度多了一层，`DATA_DIR`/`ACCESS_MODEL_DIR` 等用
-`_HERE.parent.parent.parent` 定位（不是 `.parent.parent`）。
 
-每一轮都是自包含的完整流水线快照（只共享 `train-data/` 这个 npz 池，不共享其它
-顶层公共模块），这样任何时候看某一轮结果都对应得上那一轮自己的代码。以后新方案
-默认开新的 `Nth-run/` 目录。
+**run-1归档说明（2026-07-18）**：`run-1/` 移进 `archive-runs/old-runs-2/
+run-1/` 后路径深度多了2层，脚本里原来的`DATA_DIR`用`_HERE.parent.parent`
+（2层，run-1原本是顶层）定位到`train-pssp/`——现在需要`_HERE.parent.parent
+.parent.parent`（4层）。**这些脚本当前没有跟着改**（沿用之前归档的先例：
+只读存档，`RESULTS.md`里的数字是归档前留下的，不代表现在能直接跑通）。
 
-旧代码库（`access-model/access-model-train/`）本身有若干已知问题（`vae.py`/`vdt.py`
-源码缺失导致只有 `simvp` 方法能跑、DDP 硬编码 `CUDA_VISIBLE_DEVICES`、`sm_ratio`
-融合是像素级加权不可学习等），但这份代码只做历史存档、不再修改，这些问题不再需要
-跟踪——新代码（`first-run/` 起）都是重写的，不继承这些问题。
+**run-2归档说明（2026-07-21）**：`run-2/`移进`archive-runs/old-runs-2/
+run-2/`后，同run-1的先例，路径深度多了2层——`run-2/train/dataset.py`的
+`DATA_DIR`（`_HERE.parent.parent`）和`run-2/evaluation/report.py`的
+`ACCESS_MODEL_DIR`（`_HERE.parent.parent`）都需要4层才能定位到
+`train-pssp/`根目录。**同样没有跟着改代码**，只读存档，不代表现在能直接
+跑通；`run-2`内部脚本互相引用的相对路径（`_HERE.parent / "train"`等）不
+受影响，因为整个`run-2/`目录结构原样搬过去了，只有指向仓库根目录
+（`train-data/`、`access-model/`）的路径需要额外2层。
 
-## 已经验证/settled 的方法论决定
+## run-1 起沿用的既有约定（不重复论证，直接继承自旧PC的经验）
 
-排查过、有证据支撑、不需要重新论证：
+- 每轮 run 自包含，只共享 `train-data/`。
+- Python环境：这台新PC用`~/.virtualenvs/train`（`workon train`），旧PC的
+  `wolf`环境没有迁移过来，见下方"Phase 0（基础设施）"的环境细节。
+- 评估口径：t+1~t+4 分步报告，t+2 是重点参考步，不合并成聚合数字；train/test（本
+  轮起严格说是 train/val，见 `archive-runs/old-runs-2/run-1/PLAN.md`）两边都要报；每个实验的比较表固定带
+  exp4 和朴素基线（重复最后一帧）两行对照；位置相关性指标已弃用，只看
+  peak_dist(k=1) + PSR_k5@5。
 
-- **归一化**：target 和输入的声图分量都用 `exp(sm - sm.max())`（逐帧独立），输入
-  再按 `sm_ratio` 和灰度图混合，模型输出 sigmoid。这是机器人实际部署代码
-  （`boxie_node/mode_pssp.py`/`policy_utils.py`）验证过的真实方式——最初误以为
-  旧训练用原始 0~160 量级当 target（依据是一份未经验证的脚本快照的注释状态），
-  改用 exp 变换后单样本冒烟测试 peak_dist 从 27 降到 2.24，强烈佐证方向正确。
-- **提取频率 2Hz**：是从任务信息量本身出发的建模决策（0.5s 内变化不大），不是
-  随意继承的旧约定；4Hz 只是旧硬件延迟约束、30Hz 只是"先抓多点以后再说"，都不是
-  "更准确"的替代方案。
-- **声图生成器**：纯 PyTorch 重实现（`soundmap.py`），在 generator-compare 项目里
-  对 65 个 bag、约 5 万个 tick 验证过和旧 acoular 版等价（Pearson r≈0.99999），
-  GPU 上快 7.7 倍。
-- **bag 读取**：`bag_io.py` 直接读 sqlite3 底层 `.db3` 文件 + 手写 CDR 解码，不依赖
-  ROS2/rosbags。`audio_decoder_for()` 按每个 bag 自己声明的消息类型（`AudioData`
-  无 header版 vs `AudioDataStamped` 带 header 版）自动选解码器。
-- **train/test 切分按组/按 bag，不按文件内部时间切**：文件内部时间切分（旧代码
-  方式）没有帧级重叠，但 train/test 是同一段对话的相邻几秒，测的是"记不记得住"
-  不是"能不能泛化"。
-- **密集滑窗是过采样不是数据增强**：语义上没有新信息，但只要 split 在组/bag 级别
-  做对了，就不影响评估有效性。
-- **PSR_k@n 指标**（来自负责人自己的论文，k5@5 是 headline 设置）：k×k 边缘感知
-  局部均值滤波后再算 peak_dist，看距离小于阈值 n 的样本占比——是成功率，不是均值。
-  k=1（不滤波）就是原始 peak_dist。**负责人后来明确表示这篇论文的指标"是几年前
-  胡诌的"，不必再当权威依据**——现在核心看 peak_dist/PSR，加上下面这个更关键的
-  "位置相关性"指标，PSR 仅作参考。
+## run-1 新增的方法论决定（run-1已归档到archive-runs/old-runs-2/，以下是归档前的记录，不改动）
 
-## 关键诊断指标：位置相关性（Pearson r）
+**run-1（chat-only, 2026-07-18）总结**：Phase 0搭基础设施 → Phase 1选
+`bs=32` → Phase 2确认`clip_len=10`优于20 → Phase 3确认`sm_ratio=0.5`/
+`N_S=N_T=4`默认值已接近最优。最终配方 **`bs=32, clip_len=10, sm_ratio=0.5,
+N_S=N_T=4, lr=1e-3起始+LR衰减联动早停, noise_ratio增强`**，val peak_dist
+6.04/PSR 75.25%，稳定追平/略超exp4（6.14/74.88%）。详细数据见下，完整逐步
+数字见`archive-runs/old-runs-2/run-1/RESULTS.md`。
 
-目前最重要的诊断工具（second-run 引入、third-run 大量使用）：预测峰值位置和真值
-峰值位置的皮尔逊相关系数（行、列分别算再取平均）。同时总是报告一个**朴素连续性
-基线**——直接用输入最后一帧的峰值位置当预测，不用模型——作为参照天花板：如果
-模型的相关系数低于这个基线，说明模型没学会"跟着输入变化调整预测"，比什么都不做
-还差。
+**Phase 0（基础设施）**：
+- **确认：`DataLoader(shuffle=True)` 每个epoch都重新洗牌**（`archive-runs/old-runs-2/run-1/train/
+  verify_shuffle.py`）。直接对训练集用的 `RandomSampler` 连续调用4次
+  `iter()`（等价于DataLoader每个epoch内部的行为），4次结果两两不同、但每次
+  都覆盖同一组window index——不是"只洗一次然后固定顺序复用"。代码本身不用改，
+  这条之后不用再查。
+- **新PC Python环境**：旧PC的`wolf`虚拟环境没有迁移过来，这台机器上新建了
+  `~/.virtualenvs/train`（`workon train`）。**硬件约束**：GPU驱动470.256.02
+  较旧，只有 `cu118` 分支的torch实测能跑（`cu121`+ 官方要求驱动≥525，装不上），
+  而`cu118`官方wheel只发到Python 3.10——**这台机器上跑GPU训练目前锁定在
+  Python 3.10 + torch 2.7.1+cu118**（`pip install torch==2.7.1+cu118
+  --index-url https://download.pytorch.org/whl/cu118`），更新的Python版本
+  （3.11+/3.14等）现状下用不了GPU。以后想用更新的CUDA/Python，需要先升级
+  显卡驱动（更大的系统改动，未做）。`simvp.py`（GSTA backbone）额外依赖
+  `timm` 包，不在torch/numpy/matplotlib的常规安装清单里，容易漏装。
 
-这个指标比 peak_dist/PSR 更能揭示问题：峰值距离小可能只是"收敛到一个平均位置、
-真值本身波动也不大"的假象，相关系数直接检验"输入变、预测跟不跟着变"。
+**Phase 1（batch size消融）**：
 
-**2026-07-16起弃用**：负责人认为这个指标的计算方式不一定合理——它不是看单条轨迹
-里预测有没有跟着真值动，而是把整个测试集所有窗口的预测/真值峰值坐标各自拼成一条
-长向量再算皮尔逊相关（见`compare_ablations.py`旧版`_pearson`实现），测的其实是
-"预测值对测试集内样本间差异是否敏感"，不完全等价于"跟踪能力"。**往后的评估
-（`compare_ablations.py`）不再计算/报告这个指标，只看 peak_dist + PSR。** 本节及
-下面所有历史记录里出现的"位置相关性"数字保留原样，不回填、不删除，仅作历史参考、
-不再作为决策依据。
+- **Phase 1 batch size消融结论（2026-07-18）：bs对结果影响很小，选 `bs=32` 作为
+  run-1默认**。固定配方（clip_len=10, lr=1e-3起始+LR衰减联动早停, sm_ratio=0.5,
+  noise_ratio增强）下扫了 `{16, 32, 64, 96, 128}`（`report.py`固定bs=32评估,
+  跨实验可比，`report.py`固定用bs=32评估）：
 
-## 全部模型/run 的结果一览
+  | bs | train peak_dist/PSR | val peak_dist/PSR |
+  |---|---|---|
+  | 16 | 6.60 / 72.45% | 6.12 / 75.04% |
+  | 32 | 6.42 / 73.02% | **6.04 / 75.25%**（val最优） |
+  | 64 | 6.52 / 72.60% | 6.11 / 74.88% |
+  | 96 | **6.32 / 73.52%**（train最优，略过拟合迹象） | 6.16 / 74.67% |
+  | 128 | — | **OOM**，13M参数模型+bs=128在24GB显存上装不下（单独跑、无并发也一样） |
+  | exp4（参考） | 6.71 / 71.81% | 6.14 / 74.88% |
+  | 朴素基线（参考） | 7.49 / 68.16% | 7.14 / 70.97% |
 
-**汇报硬性要求（负责人定的，必须遵守，2026-07-16 更新）**：①朴素基线每次都要
-一起报，不能只看模型自己的数字；②t+1~t+4 逐步结果都要给全，**不能合并成一个
-聚合数字当判断依据**——**t+2 是重点参考步，t+1/t+3/t+4 仅作辅助参考**；③train
-集和 test 集指标都要报，只看 test 不能诊断是否过拟合。指标本身不变，仍是
-peak_dist(k=1) + PSR_k5@5，位置相关性已弃用（见上一节）。
+  四个可行bs差距都很小（val peak_dist 6.04~6.16），全部清楚超过朴素基线、追平
+  exp4。选`bs=32`：val指标四者最优，且给Phase 2要测的`clip_len=20`（参数量
+  13M→38M）留显存余量，不用贴着上限走。
+- **方法论细节：train.py训练过程中内部早停跟踪的"最优val_peak_dist"和
+  report.py最终报告的数字不完全一致**——内部早停用训练时的bs做val评估，
+  report.py固定用bs=32重新评估；`DataLoader(drop_last=True)`丢的窗口数随bs
+  变化（611个val窗口本来就不多，bs越大丢得越多，且丢的是时间轴上最后那段，
+  不是随机的），两边看到的窗口子集不完全一样。不是bug，只是"训练时用来选
+  checkpoint的依据"和"最终报告数字"来自略有差异的评估窗口，**以report.py
+  数字为准**。
+**Phase 2（clip_len对照）**：
 
-下表紧凑只列**t+2 的 train/test 数值**（重点步），t+1/t+3/t+4 完整逐步数字见
-各 `RESULTS.md`（2026-07-16 已为全部 archive-runs 重新生成，新增 train 集评估，
-脚本是每个 run 目录下新增的 `evaluation/eval_train_test.py`）。278-bag 规模的
-训练集（fifth/seventh-run 的 baseline/wordwolf_chat 系列）评估时间过长，train
-指标改用等距抽样（stride subsample，见各脚本 `MAX_TRAIN_WINDOWS`），不是随机
-抽样，抽样比例在对应 RESULTS.md 里注明。**train 指标不含 exp4**——exp4 的训练
-数据边界和这里的 TRAIN_BAGS 无关，"train 指标"对它没有过拟合诊断意义。
+- **Phase 2 结论（2026-07-18）：chat-only数据上 `clip_len=10` 全面优于
+  `clip_len=20`**。固定bs=32/lr=1e-3起始/sm_ratio=0.5/noise_ratio增强对照：
 
-### G2+G6 WordWolf holdout（first-run/second-run 用的测试集，train=16bag/8704窗口，test=3520窗口）
+  | 配置 | train peak_dist/PSR | val peak_dist/PSR |
+  |---|---|---|
+  | clip_len=10（=Phase1的bs=32基线） | 6.42 / 73.02% | **6.04 / 75.25%** |
+  | clip_len=20 | 6.83 / 71.19% | 6.26 / 74.18% |
 
-**t+2（重点步），train / test 分列，peak_dist↓ / PSR_k5@5↑：**
+  train/val、peak_dist/PSR 四项clip_len=20全部更差——10s窗口在chat这个小/
+  同质数据集（5797个训练窗口，3个bag）上没有额外收益，模型参数量却翻倍
+  （38M vs 13M），大概率是"容量喂不饱/更容易过拟合"。**和旧PC eighth-run
+  的`B_clip20`实验（当时用粗粒度早停判"不确定"）结论方向一致，这次用LR衰减
+  联动早停看得更清楚，是真负结果不是噪声**。但历史上`C_g1g2_train_g3_test`
+  显示clip_len=20的收益是在训练池加入WordWolfExp G1+G2**之后**才体现出来
+  的（G3 held-out组上全面超过exp4）——**这个负结果不代表clip_len=20本身没用，
+  更可能是"长窗口需要更大/更多样的训练数据才能发挥作用"，留给run-2扩数据
+  规模时验证**，run-1范围内（chat-only）先确认 `clip_len=10` 更合适。
+**Phase 3（sm_ratio + 容量消融）**：
 
-| 模型 | train peak_dist | train PSR | test peak_dist | test PSR |
-|---|---|---|---|---|
-| exp4（旧，不参与train集评估） | — | — | 12.15 | 59.86% |
-| first-run baseline (MSE, lr=1e-3) | 10.27 | 63.79% | 10.65 | 65.00% |
-| second-run MSE | 10.27 | 63.74% | 10.58 | 64.83% |
-| second-run BCE | 10.53 | 62.57% | 10.29 | 65.71% |
-| second-run KL | 10.15 | 63.40% | 10.41 | 65.71% |
-| 朴素基线（重复最后一帧） | 11.53 | 57.56% | 12.41 | 57.84% |
+- **Phase 3 结论（2026-07-18）：`sm_ratio`/模型容量在chat-only数据上都不是
+  瓶颈，当前默认值已经接近最优**。固定bs=32/clip_len=10/lr=1e-3起始/
+  noise_ratio增强对照：
 
-**结论（2026-07-16 用新标准复核，不变）**：t+2 上四个模型都稳定超过朴素基线
-（train/test 都是），loss 从 MSE 换成 BCE/KL 在 t+2 互有胜负、差距很小，没有
-哪个明显更准。train/test 差距不大（比如 MSE train 10.27 vs test 10.58），没有
-明显过拟合迹象。位置相关性排查（已弃用指标，历史参考）当时发现三个模型都低于
-朴素连续性天花板——这个判断不依赖已弃用指标也大致成立：t+2 上模型只比朴素基线
-好一点，不是压倒性优势。t+1/t+3/t+4 完整数字见 `archive-runs/first-run/
-RESULTS.md`、`archive-runs/second-run/RESULTS.md`。
+  `sm_ratio`扫（N_S=N_T=4默认）：
 
-### chat_debate_exp1_topic3（third-run 的 held-out 测试集，训练集=80个bag/42413窗口
-=78个WordWolf bag + chat 前两段，test=2138窗口，未做TEST_BAG_MIN_START_FRAC裁剪，
-如实复现third-run当年的测试集）
+  | sm_ratio | val peak_dist | val PSR |
+  |---|---|---|
+  | 0.3 | 6.19 | 74.26% |
+  | **0.5（默认）** | **6.04** | **75.25%** |
+  | 0.7 | 6.15 | 74.96% |
+  | 0.9 | 6.24 | 74.59% |
+  | 1.0（纯声图，无灰度混合） | 6.17 | 74.71% |
 
-**t+2（重点步），train / test 分列，peak_dist↓ / PSR_k5@5↑：**
+  `(N_S, N_T)`容量扫（sm_ratio=0.5默认）：
 
-| 模型 | train peak_dist | train PSR | test peak_dist | test PSR |
-|---|---|---|---|---|
-| exp4（旧，未训练过 WordWolf/chat，不参与train集评估） | — | — | 8.60 | 63.16% |
-| third-run baseline（lr=1e-3，早停epoch12） | 10.41 | 64.02% | 9.26 | 61.74% |
-| third-run lr=1e-6（跑满60epoch,未早停） | 10.38 | 64.14% | 9.07 | 62.45% |
-| fourth-run DMVFN（架构对比，见下） | 21.15 | 11.27% | 13.66 | 31.72% |
-| 朴素基线/朴素连续性 | 11.52 | 58.90% | 9.27 | 60.46% |
+  | (N_S, N_T) | val peak_dist | val PSR |
+  |---|---|---|
+  | (2,2) 偏小 | 6.08 | 74.75% |
+  | **(4,4) 默认** | **6.04** | **75.25%** |
+  | (6,6) 偏大 | 6.13 | 74.88% |
 
-**结论（2026-07-16 用新标准复核）**：train 上两个 SimVP 变体都清楚超过朴素基线
-（10.4 vs 11.5），但 **test 上四个模型（含 exp4）和朴素基线几乎打平**（9.07~9.27
-之间），test peak_dist 甚至比 train 更好——这不是模型学得更好，是 test 集
-（chat_topic3，未裁剪）本身比 train 集更容易（朴素基线自己在 test 上 9.27，
-在 train 上 11.52，任务难度不同，不能直接比较 train/test 的绝对数值）。lr=1e-6
-（旧模型真实训练 lr，`simvp_exp4.json` 确认，cosine scheduler 代码从未启用，
-全程恒定 lr）比 lr=1e-3 在 test 上略好，但两者都没能明显超过朴素基线。
-**fourth-run DMVFN 在 train 集上比朴素基线还差**（21.15 vs 11.52 peak_dist，
-PSR 11%），确认不是"只在没见过的数据上失败"，是架构本身（自回归误差累积）
-的问题，训练数据本身也学不好。
+  两组消融的所有候选值差距都很小（sm_ratio: 6.04~6.24；容量: 6.04~6.13），
+  **当前默认值（sm_ratio=0.5、N_S=N_T=4）碰巧都是各自组里的最优或接近最优**
+  ——不是因为这两个超参对这个任务毫无影响，更可能是本来就设得合理，chat-only
+  这个数据规模下也测不出更大的差异。**容量往上（6,6）没有带来提升，往下（2,2）
+  也没有明显变差**，说明在这个数据规模下模型容量不是瓶颈，扩数据规模（run-2）
+  之前不需要在这个旋钮上纠结。
+- **LR衰减联动早停（Phase 0a）跑出的真实行为**：四个bs的训练曲线都是同一个
+  模式——第一次plateau前（约epoch 6~13）达到最优，之后3次lr衰减全部没能把
+  指标拉回来，反而持续变差（比如bs=16：best在epoch8，之后一路掉到epoch20的
+  更差水平）。**说明"早停太早"不是这次的问题**——给了充分的机会（3次衰减，
+  每次3个epoch耐心）让模型在更低lr下继续精修，但确实就是在第一个plateau附近
+  见顶，衰减救不回来。这条独立验证了`archive-runs/old-runs-1/CONTEXT.md`里
+  "早停点异常靠前"这个老问题在chat小规模数据上**不是**因为checkpoint粒度太粗
+  ——真实最优点就在那附近，值得在run-2扩大数据规模时留意是否同样成立。
 
-### 补充诊断：同一 lr=1e-6 checkpoint 在其它场次上的位置相关性（非正式评估，用来
-排查"是训练集内/外的问题，还是场次本身难度不同"）
+## run-2 结论摘要（已收尾，2026-07-21，新会话从这里开始看最快）
 
-| 场次 | 是否在third-run训练集里 | 朴素基线 | exp4 | third-run(lr1e-6) |
-|---|---|---|---|---|
-| chat_topic2 | 是 | 0.346 | 0.424 | 0.417 |
-| chat_topic3 | 否 | 0.165 | 0.181 | 0.150 |
-| G6_game5_PSSP | 是 | 0.101 | 0.089 | NaN（t+2预测方差为0）|
-| GRP_meeting(1-56-44) | 否 | 0.375 | **0.432** | 0.376 |
-| olab_0630(15-17-22) | 否 | 0.167 | **0.301** | **0.264** |
-| Experiment0312_PSSP | 否 | 0.254 | 0.206 | 0.217 |
+**run-1（chat-only）已完成并归档**，最终配方：`bs=32, clip_len=10,
+sm_ratio=0.5, N_S=N_T=4, lr=1e-3起始+LR衰减联动早停, noise_ratio增强`——val
+peak_dist 6.04/PSR 75.25%，稳定追平/略超exp4，全部超参消融没能进一步突破。
+完整数字见`archive-runs/old-runs-2/run-1/RESULTS.md`。
+
+**run-2最终结论：`phase1_chat_ww_mtg`（121-bag混合池，chat+WordWolfExp
+74bag+GRP_meeting 44bag，G1_game3~6held-out）是这个阶段锁定的最终配方**。
+WordWolfExp held-out上peak_dist 9.14 vs exp4 12.23 vs 朴素基线11.31，
+chat/grpmtg上也追平或略超exp4，2个种子重跑+G8交叉验证过是真实、可复现的
+泛化能力，不是偶然。**在这个配方基础上，后续所有想再往上推一把的尝试
+（更长窗口、翻倍数据、加正则化、改容量、混入新数据源）全部没能带来可辨识
+的提升，其中一次（157-bag held-out测试）还测出了明确的负面效果**——run-2
+到这里收尾，不再继续在"扩数据/调参"这条线上投入，完整过程见下：
+
+1. **Phase 1**（121bag，G1_game3~6held-out）：**正向**，打破run-1天花板，
+   WordWolfExp上peak_dist 9.14 vs exp4 12.23 vs 朴素基线11.31，全面超过。
+   **=== 最终锁定的配方 ===**
+2. **Phase 2**（同配方，held-out组换G8交叉验证）：**正向且稳定**，
+   9.14/11.94两次都是"本实验<基线<exp4"方向一致，不是G1偶然。
+3. **Phase 3**（clip_len 10→20对照）：**打平**，没有清楚胜负，但耗时2倍/
+   参数量3倍，性价比差，clip_len=10仍是更实际选择。
+4. **Phase 4**（推全量283-bag，新加157个bag无held-out设计）：**持平**，
+   数据量翻倍没有测出可辨识收益，后续用2个种子重跑确认是真的噪声量级内
+   持平，不是类比推测。
+5. **过拟合探针**（24-bag小池关掉早停跑满100epoch）：**容量不是瓶颈**，
+   train peak_dist能压到2.36，但泛化在早期就已经见顶，continuing只是在
+   记忆训练数据。
+6. **正则化排查**（weight_decay/增强力度/容量/dropout四个单变量实验）：
+   **三个空结果，一个（缩容量）方向还错了**——没有找到能改善泛化的旋钮，
+   问题不是"正则化不够"。
+7. **157-bag held-out测试**（held出ATR_RIKEN_1F，训练混入其余108个bag）：
+   **明确负面结果**——比零shot基线（没加任何新bag）还差一倍多，且预测
+   随步长发散，推测是训练混入了"相近但不同"的场景（ATR_RIKEN_3f）导致
+   负迁移。
+
+**综合诊断**：过拟合探针+正则化排查+157-bag测试三条线索指向同一个结论——
+这个配方学到的更像是"训练时见过的几个具体环境的专属记忆"，不是"声源定位
+任务本身的通用规律"，所以在**已经验证过的域**（chat/WordWolfExp/
+GRP_meeting，靠held-out组测试确认过）上泛化很好，但对**训练时完全没跑过
+的新物理环境**，不但不能指望零成本泛化，混入相近场景反而可能有害。这不是
+"数据不够多"或"正则化不够强"能解决的量的问题，要真正提升到新环境的
+泛化能力，需要domain-invariant特征学习/领域自适应/新环境少样本微调这类
+结构性不同的方法——**这类方法的工程投入明显大于run-2已经做的所有尝试，
+负责人决定这个阶段不投入，run-2到此收尾**，需要时可以在此基础上重新立项。
+
+详细数字/推理过程见下"run-2 新增的方法论决定/结果"，完整逐步数字见
+`archive-runs/old-runs-2/run-2/RESULTS.md`，run-2代码在
+`archive-runs/old-runs-2/run-2/train/`、`archive-runs/old-runs-2/run-2/evaluation/`。
+
+## run-2 新增的方法论决定 / 结果
+
+**Phase 1（2026-07-18）：chat+WordWolfExp(74bag)+GRP_meeting(44bag)混合训练
+（121个bag，不是全量283），WordWolfExp的G1_game3~6held-out测试——正向结果，
+是全项目历史上最强的一次held-out泛化**。配方沿用run-1（bs=32/clip_len=10/
+lr=1e-3起始+LR衰减联动早停/sm_ratio=0.5/noise_ratio增强/N_S=N_T=4），训练池
+116,227个窗口（约run-1 chat-only的20倍），单epoch~547s（~9.1分钟），15个
+epoch后早停（best在epoch3，overall_pd_mean=7.41），总耗时约137分钟。
+
+t+2（重点步）val/test peak_dist：总的7.48、chat 5.92、WordWolfExp
+（G1_game3~6，完全held-out）9.43、GRPMTG（held-out那1个bag）7.15——四项
+全部见`archive-runs/old-runs-2/run-2/RESULTS.md`t+2行。**均值（更全面的判断依据）**，
+peak_dist↓/PSR↑，val/test列：
+
+| 场景 | 本实验 | exp4 | 朴素基线 |
+|---|---|---|---|
+| 总的（三域按窗口数加权合并） | 7.39 / 62.41% | 7.90 / 62.56% | 8.46 / 57.23% |
+| chat | 5.99 / 75.41% | 6.14 / 74.88% | 7.14 / 70.97% |
+| **WordWolfExp（held-out）** | **9.14 / 67.93%** | 12.23 / 57.35% | 11.31 / 59.68% |
+| GRPMTG（held-out） | 7.09 / 59.65% | 6.98 / 62.59% | 7.87 / 55.17% |
 
 **关键发现**：
-1. **模型架构本身有能力学会超过朴素基线**（chat_topic2/olab_0630/GRP_meeting 上
-   exp4 和/或 third-run 都明显超过）——不是这套方法根本学不会跟踪位置。
-2. **"训练集内/外"不能干净地解释表现好坏**——不同场次本身的可预测性差异很大
-   （比如 G6_game5_PSSP 连朴素基线自己的相关系数都只有 0.101，远低于 chat_topic2
-   的 0.346），场次的内在动态特性比"见没见过"更重要。
-3. **反直觉的发现：exp4（旧模型，未见过 WordWolf/chat 任何数据）在这 6 个场次里
-   除 Experiment0312 外全部稳定超过朴素基线，泛化表现比 third-run（训练数据量
-   大得多：80 个 bag，几乎全是 WordWolf）更稳定**。提示**训练数据的多样性（场景
-   类型丰富）可能比单纯堆同质数据的数量更重要**——third-run"加量"的方式（78个
-   高度同质的 WordWolf bag + 仅 2 个 chat）换来的可能是对 WordWolf 模式的强适应，
-   代价是跨场景泛化能力反而不如 old model 原本（构成未知，但大概率更多样）的
-   训练配方。**这是目前最值得跟进的方向。**
+1. **WordWolfExp上全面碾压exp4和朴素基线**（peak_dist 9.14 vs 12.23 vs
+   11.31，PSR 67.93% vs 57.35% vs 59.68%）——G1_game3~6这4个bag训练时完全
+   没见过，这是真正的跨组泛化，不是记住训练集。比旧PC上最好的历史结果
+   （eighth-run `C_g1g2_train_g3_test`：G3上peak_dist 10.71 vs exp4的12.94）
+   还要好，且这次训练池规模大得多（121 vs 11个bag），说明这个方向不是偶然。
+2. **chat上也超过exp4**（5.99 vs 6.14），甚至比run-1纯chat-only跑出来的
+   6.04还略好——混入更多其它域数据没有损害chat本身的表现，反而有轻微帮助。
+3. **GRPMTG上和exp4基本打平**（7.09 vs 6.98，本实验略差一点点），但清楚
+   超过朴素基线（7.87）。不算突出，但exp4自己在这个域的"train"（对exp4来说
+   也是没见过的域）表现很差（peak_dist 13.30，比朴素基线9.54还差），本实验
+   能追平exp4已经说明确实学到了东西，只是提升空间不如WordWolfExp明显。
+4. **这次121-bag规模明显打破了run-1 chat-only的天花板**——run-1无论怎么调
+   超参都卡在val peak_dist 6.04附近（只有chat自己一个域），这次同样的配方
+   在更大训练池上，WordWolfExp/chat两个域都清楚超过exp4，天花板被打破。
 
-### fourth-run：SimVP vs DMVFN 架构对比（2026-07-11，结论：DMVFN 败）
+完整逐步数字（t+1~t+4分步、train列）见`archive-runs/old-runs-2/run-2/RESULTS.md`。
 
-背景：SimVP 是 2022 年的 CNN 架构，负责人问是否有更新、更适合实时交互（快、不用
-diffusion）、又比 transformer 省数据的替代方案。选了 **DMVFN**（Hu et al., CVPR
-2023 highlight, arXiv:2303.09875）试——查证原论文后发现负责人对"用12帧算光流"的
-回忆有误，论文实际只用**最近2帧**，9级 MVFB 级联反复精炼光流+融合掩码、backward
-warp 合成下一帧；多步预测靠自回归滚动（把自己的输出喂回去）。协商后决定：照论文
-用2帧+自回归，但不实现纯粹为推理提速的 Routing Module（论文自己的消融显示去掉它
-精度几乎不变）。数据、train/test 划分和 third-run 完全一致（`fourth-run/train/
-dataset.py` 是 third-run 的原样拷贝），单一变量是架构本身。
+**Phase 2（2026-07-18）：换WordWolfExp held-out组为G8，交叉验证Phase 1的正向
+结果是否稳定——确认稳定，不是G1的偶然**。配方/训练池完全同Phase 1，唯一变量
+是`--ww-test-group G8`（`dataset.py`新增`ww_split(test_group)`函数支持任选
+held-out组，`train.py`/`report.py`都跟着改了）。17个epoch，154分钟，best在
+epoch5（overall_pd_mean=8.36，比Phase 1的7.41差——**这本身也是有意义的信号**，
+见下）。
 
-**实现过程中连续踩了两个真实的数值/训练坑（不是"数据不够"，是这次新写的架构代码
-本身的问题）**：
-1. **flow 场无约束爆炸**：9 级残差累积没有上限，几步内窜到千万量级，融合掩码
-   饱和到精确 0，模型输出坍缩成常数——加了 `tanh` 限幅（每级最多贡献±2像素）修复。
-2. **限幅后仍有一次"饱和死锁"**：`max_flow=8`+`lr=1e-3`（照搬SimVP的lr）时，9级
-   全部学会往同一方向饱和推，梯度在 tanh/sigmoid 饱和区消失，模型卡死在"直接采样
-   输入角落像素"（角落在这个任务里恰好接近0）这个偷懒解——test_loss 从第2个epoch
-   起完全冻结不变，是死锁不是收敛。换成 `max_flow=2`+`lr=1e-4` 后训练恢复正常。
-3. **肉眼看预测形状像"漂在空中的塑料袋"**（负责人原话）——放大对比图证实：预测
-   是不规则、带尖锐棱角、拖着细丝延伸的碎片状，不是真值那种平滑高斯团块，是**光流
-   场空间不平滑导致的经典 warping 伪影**（我最初的简化实现漏了这个几乎所有光流
-   论文都会加的正则项）。加了 total-variation 平滑正则（`flow_smoothness_loss`，
-   权重0.1）后重新训练，t+1/t+2 的形状明显改善；t+3/t+4 仍有拖尾，但比之前好很多。
+WordWolfExp held-out组val/test均值对比：
 
-**最终结果（60 epoch 跑满，未早停）**：t+1 尚可（peak_dist 8.98 接近 SimVP 的
-7.0，PSR 63% vs SimVP 71%），**但 t+2 起断崖式下跌，t+3/t+4 基本失效**（PSR 仅
-4.3%/0.95%）——自回归滚动的误差累积是主因（每一步都在 warp 自己上一步不完美的
-输出，偏差逐级放大），可视化诊断（形状从"清晰"变"撕裂"正好发生在 t+2→t+3）和
-这个数字趋势完全吻合。这正是负责人一开始就承认的风险（"我理解这个风险，不过我
-觉得还是可以尝试一下"），风险应验了。
-
-**结论：这次 DMVFN 实现全面不如 SimVP（也不如朴素基线）**，fifth-run 扩数据训练
-应该用 SimVP，不是 DMVFN。DMVFN 代码保留在 `fourth-run/`，如果以后想再试（比如
-换成非自回归的多帧直出头、或加大训练数据量看能不能缓解误差累积），代码和这次的
-教训都在，不用从头再来。
-
-### fifth-run：数据规模/多样性测试#2（2026-07-13/14，结论：仍未突破天花板）
-
-背景：third-run 的假设——"数据多样性可能比数据量更重要"——只用 78 个 WordWolf bag +
-2 个 chat bag 测过，样本太小。2026-07-13 PSSPData 重跑后 `train-data/` 有了 283 个
-真正来自 15+ 个不同来源的 bag，fifth-run 用 278 个（283 - 5 测试）做训练，架构/loss/
-lr 等和 third-run 完全一致，单一变量还是数据。测试集：chat_debate_exp1_topic3 +
-WordWolfExp G13 的 game3/4/5/6（G13_game2_Video/interview 仍在训练集里，负责人明确
-接受的同组泄漏风险）。60 epoch 上限，lr=1e-3 下 epoch 3 是最优、epoch 13 早停。
-
-**评估方法论上的一个真实修正**：旧模型（exp4）的训练代码
-（`access-model-train/utils_all_load.py` 的 `NPZLoader.get_index()`）确认过它对
-**每个 bag 按时间做 train_ratio=0.9 的切分**（前90%它自己训练、后10%它自己测试），
-且它的 config 里 `exp_name: []` 意味着当时用了 npz_path 下的全部数据——不确定
-chat_debate_exp1_topic3 当时在不在那个目录里，但如果在，用完整这个 bag 评旧模型
-就会让它"偷看"过前90%，对旧模型不公平地有利。**修复：chat_debate_exp1_topic3 只用
-时间轴上最后10%做测试**（`dataset.py` 的 `TEST_BAG_MIN_START_FRAC`），和旧模型自己
-的切分对齐，保证这部分数据双方模型都没见过。G13 的 4 个测试 bag 确认双方模型都没
-拿来训练过，按整段使用不需要裁剪。`compare_old_new.py` 现在把 chat / wordwolfexp
-(G13) / combined 三组结果分开报告，不再只看合并数字。
-
-**结果（chat, 202窗口 / wordwolfexp(G13), 1467窗口，旧版评估，位置相关性已弃用
-仅存档）**：
-
-| | peak_dist chat↓ | PSR chat↑ | corr chat↑ | peak_dist G13↓ | PSR G13↑ | corr G13↑ |
-|---|---|---|---|---|---|---|
-| 旧模型(exp4) | 7.48 | 68.36% | 0.191 | 12.88 | 55.40% | 0.255 |
-| fifth-run(新) | 8.25 | 64.84% | 0.133 | 12.94 | 54.88% | 0.145 |
-| 朴素基线 | 8.68 | 63.54% | **0.193** | 13.06 | 52.69% | 0.248 |
-
-**2026-07-16 复核修正**：位置相关性指标已弃用（见"关键诊断指标"一节）。**只看
-peak_dist/PSR 重新读上表，"全面不如旧模型"这个判断被夸大了**——chat 上 peak_dist
-8.25 明显好于朴素基线8.68（不是"不如"，是介于基线和旧模型之间），G13 上 peak_dist
-12.94 基本和旧模型12.88打平、PSR 54.88%也基本打平旧模型55.40%、明显好于朴素基线
-52.69%。当时"全面不如"的结论主要是被相关性数字拖累的（尤其chat上0.133明显低于
-基线0.193），peak_dist/PSR 本身其实是个中规中矩、并不差的结果。
-
-**2026-07-16 第二次复核（新标准：t+2重点、train/test分列）**：加了 train 集评估
-（278 bag 全量，等距抽样至 29248 窗口，见本节开头说明）——
-
-**t+2（重点步），train / test 分列，peak_dist↓ / PSR_k5@5↑：**
-
-| | train | test[chat] | test[G13] | test[combined] |
-|---|---|---|---|---|
-| exp4（不参与train评估） | — | 7.81 / 67.19% | 13.06 / 54.55% | 12.49 / 55.83% |
-| fifth-run baseline | 9.30 / 63.42% | 8.72 / 62.50% | 13.19 / 54.47% | 12.79 / 54.87% |
-| 朴素基线 | 10.24 / 56.95% | 9.03 / 61.98% | 13.45 / 51.56% | 12.89 / 52.94% |
-
-train 上模型清楚超过朴素基线（9.30 vs 10.24），test 三组也都超过朴素基线，
-G13/combined 上和 exp4 基本打平（差距在 0.1~0.3 之间），chat 上比 exp4 差一截
-（8.72 vs 7.81）——和之前 t+1~t+4 聚合结论一致，train/test 差距不大，没有明显
-过拟合迹象，278 bag 全量数据在 t+2 上的表现是"追平旧模型、清楚超过朴素基线"，
-不是"没学会"。
-
-**中间发现的一个方法论教训**：训练过程中用未裁剪+合并的旧评估方式看过一次中间结果
-（epoch 3 checkpoint），当时新模型合并位置相关性（0.407）看起来超过了旧模型
-（0.400）——这个"看起来更好"的结论后来被证明是假象，主要来自 chat_topic3 前90%
-可能被旧模型训练时见过、以及把两个难度差异很大的测试域直接合并平均掩盖了真实差距。
-**教训：对比旧模型前必须先确认旧模型的训练数据边界，测试集混合多个来源时必须分开
-报告，不能只看合并平均数**。
-
-**深挖旧模型训练代码，找到三个真实生效、目前完全没对齐的训练管线差异**（负责人
-追问"除了数据还有什么区别"引出的排查，逐条查代码而不是猜）：
-
-1. **lr**：旧模型真实训练用 `lr=1e-6`（`simvp_exp4.json`），third/fifth-run 一直
-   用 `lr=1e-3`，相差1000倍——这个之前就知道。
-2. **滑窗密度/相位多样性**（比"30Hz vs 2Hz"这个说法更准确的表述）：旧模型的原始
-   soundmap/gray_camimg 是按摄像头原生帧率密集存的（`create_dataset.py` 里
-   `sm_generator.generate()` 挂在 `if connection.topic == image_topic`下，每个
-   摄像头帧都算一次；实测一个269秒的 bag 存了8352帧，约31Hz）。`NPZLoader.
-   get_index()` 里候选窗口**起点**是在这个密集数组的**每一帧**上取的
-   （`data_num=len(原始密集数组)`），窗口**内部**才按 `skip_frames=30//fps`
-   （fps默认2）抽稀到2Hz间隔。也就是同一段录音，旧模型能切出的（高度重叠但起始
-   相位不同的）训练窗口数量比我们多约15倍——我们的声图从提取时就只在2Hz的tick上
-   算过，根本没有更密的原始数据可切。音频窗口本身两边一致（都是 `audio_max_len`/
-   `AUDIO_WIN=160`≈0.46s），clip_len=10/pred_len=4 默认值也一致，不是任务定义
-   变了，纯粹是同一份数据被旧模型更充分地重复利用。
-3. **数据增强**：旧模型 `train_all_load.py` 对每个 batch 都做 50%概率水平翻转+
-   随机缩放裁剪（裁剪面积95%~100%、长宽比0.9~1.11，裁剪后插值回原尺寸，input/
-   target 用同一套 flip/crop 参数保持空间对应），`data_aug: true` 在
-   `method=='simvp'` 分支外层统一生效，不是死代码。third/fifth-run 明确没做任何
-   数据增强。
-
-**排查后确认不是差异、可以放心忽略的**：`load_vae`/`vae_weight`（只在
-`method=='vdt'`——扩散模型分支——生效，exp4 的 `method` 是 `'simvp'`，对它是死
-配置）；`eta_min`/cosine annealing scheduler（代码里 `scheduler.step()` 从没被
-调用过，之前就确认过是死代码，全程恒定lr）；`SimVP` 的 `N_S`/`N_T`——exp4 显式传
-`N_S=4, N_T=4`，和我们 `simvp.py` 的默认值本来就一致，不是差异。
-
-### sixth-run：消融 lr / 滑窗密度 / 数据增强（2026-07-14，结论：三者叠加追平旧模型）
-
-只用 chat（3 个 bag，每个按 `train_ratio=0.9` 做时间切分，前90%训练/后10%测试，和
-exp4 自己的切分方式完全一致——`sixth-run/train/dataset.py`）做小规模快速消融，
-按顺序验证 fifth-run 深挖出的三个真实训练管线差异，每一步固定上一步的胜者：
-
-1. **滑窗密度**（sparse=2Hz原生 vs dense=~30Hz原生密集起点+skip_frames=15内部抽稀，
-   见 `sixth-run/extract_chat_dense.py`/`dataset.py`），固定 lr=1e-6（exp4真实lr）、
-   无数据增强——**dense 小幅全面胜出**（peak_dist 6.43 vs 6.53，PSR 73.56% vs
-   73.23%，相关性 0.297 vs 0.288），且 dense 只需 5 个epoch就追上 sparse 跑满60
-   epoch的水平，验证了"同一份录音能更充分复用"这个机制确实有效。
-2. **学习率**（dense 密度下，1e-6 vs 1e-3），无数据增强——**lr=1e-3 险胜**
-   （peak_dist 6.34 vs 6.43，PSR 73.68% vs 73.56%，相关性 0.294 vs 0.297，一升
-   一降但差距都很小）；1e-3 在 dense 数据上只需 1 个 epoch 就达到 lr=1e-6 跑5个
-   epoch的水平，之后立刻开始过拟合（train_loss 持续降、test_loss 持续升），epoch1
-   就是最优点。
-3. **数据增强**（dense + lr=1e-3，复刻 exp4 的 flip+random-crop，见
-   `sixth-run/train/augment.py`）——**加了增强后 epoch1 直接追平/略超旧模型**：
-   peak_dist 6.08（exp4 6.14）、PSR 74.96%（exp4 74.88%）、相关性 0.306（exp4
-   0.313，非常接近）。同时增强明显减轻了过拟合速度（epoch2~4 的下滑比消融2的
-   同期缓和很多，虽然 epoch1 仍是最优点，之后仍会过拟合）。
-
-**这是整个项目 first-run 以来第一次有新训练的模型在 peak_dist/PSR 上追平甚至
-略微超过旧模型，位置相关性也非常接近**。三个差异（滑窗密度+lr+数据增强）叠加
-起来，基本解决了 third/fourth/fifth-run 一直没能突破的"模型学不会跟踪位置"问题。
-
-**补充测试（负责人要求）：数据增强能不能单独在 sparse 数据上就够，不需要
-dense？**——sparse + lr=1e-3 + 数据增强（不做密集提取），early stopping 停在
-epoch11：**peak_dist 6.14，和 exp4 完全打平；PSR 74.88%，和 exp4 完全打平；
-位置相关性 0.319，反超 exp4 的 0.313**——是 sixth-run 里综合最好的一次结果，
-比 dense+lr=1e-3+增强（peak_dist 6.08/PSR 74.96%/相关性 0.306）更好地突破了
-相关性这个最关键指标，而且完全不需要密集提取。**结论修正：dense 滑窗密度单独看
-确实有小幅正贡献（消融1），但一旦有了 lr=1e-3 + 数据增强，dense 就不是必需的了
-——lr+增强这两者才是真正把模型从"学不会跟踪"拉到"追平旧模型"的主因。**
-
-这对下一步意义重大：**把这些修正搬到 fifth-run 的 278 个 bag 全量数据上重新跑
-一次时，不需要为全部数据做~15倍代价的密集提取**，只需要把 lr 从 1e-3（本来就是
-这个值，不用改）加上数据增强（`sixth-run/train/augment.py`，直接复用）应用到
-现有的 2Hz 数据上即可，成本低很多。
-
-**2026-07-16 补充：6 个 checkpoint 的 train/test t+2 分列**（新标准，dense
-train集87559窗口等距抽样至29184，sparse train集5797窗口全量）：
-
-| checkpoint (train密度) | train peak_dist↓ | train PSR↑ | test peak_dist↓ | test PSR↑ |
-|---|---|---|---|---|
-| exp4（不参与train评估） | — | — | 6.37 | 73.85% |
-| ablation1_sparse_oldlr | 7.03 | 70.80% | 6.40 | 74.18% |
-| ablation1_dense_oldlr | 7.01 | 70.48% | 6.32 | 74.34% |
-| ablation2_dense_newlr | 6.42 | 72.93% | 6.30 | 74.01% |
-| ablation3_dense_newlr_aug | 6.74 | 71.58% | 6.11 | 74.67% |
-| extra_sparse_newlr_aug | 6.56 | 72.24% | 6.22 | 74.67% |
-| extra_sparse_newlr_noiseratio | 6.56 | 72.38% | 6.14 | 75.00% |
-| 朴素基线(sparse train/test) | 7.45 | 68.32% | 7.09 | 71.05% |
-| 朴素基线(dense train) | 7.55 | 67.80% | 同上 | 同上 |
-
-t+2 上六个 checkpoint 的 test 表现都追平或略超 exp4（6.11~6.40 vs exp4 的
-6.37），train 上也都清楚超过朴素基线，train/test 数值接近，没有过拟合迹象——
-和 t+1~t+4 聚合结论一致，extra_sparse_newlr_noiseratio 在 t+2 上 test PSR
-75.00% 是六者中最高的。
-
-**第二次补充测试（负责人要求）：设计一个不同机制的新数据增强，看效果是不是
-flip+crop 这一种技巧凑巧成功的**——新方案（`augment_batch_noise_ratio`）不用
-任何空间几何变换（明确排除了旋转：声图-摄像头像素映射是麦克风阵列固定物理几何
-标定出来的，旋转会破坏这个映射、制造不真实的样本，这一点和 flip 不同——flip 是
-镜像对称，物理上仍然自洽），改用两种信号/通道扰动：①`sm_ratio` 抖动（数据集构建
-时固定烘焙的 0.5 混合比例，训练时在每个 batch 重新按 0.3~0.7 随机比例重新混合）
-②高斯噪声（重新混合后对两个通道加小幅噪声，只作用于输入，不动 target）。
-sparse + lr=1e-3 + 这个新增强，early stopping 停在 epoch9：**peak_dist 6.11、
-PSR 74.92%、相关性 0.316——三项全部追平或超过 exp4**（exp4: 6.14/74.88%/0.313），
-和 flip+crop 的结果（6.14/74.88%/0.319）幾乎打平，谁更好在噪声级别，说不出显著
-差异。**结论：追平旧模型不依赖某一种特定的增强技巧（flip+crop）凑巧奏效，换成
-完全不同机制的增强（信号扰动而非空间几何扰动）效果相当——数据增强这个正则化
-机制本身配合 lr=1e-3 才是关键，具体用哪种增强不是决定性的**，这让"lr+增强能解决
-问题"这个结论更稳健。
-
-**只在 chat 这个小规模测试床上验证过**，下一步就是在全量数据上验证能不能推广，
-不是 chat 单一场景的巧合。完整逐步数字见 `archive-runs/sixth-run/RESULTS.md`。
-
-### seventh-run：把 sixth-run 的配方搬到全量数据（2026-07-14/15，结论：没能推广）
-
-sparse + lr=1e-3 + `noise_ratio` 数据增强（sixth-run 在 chat 上的最佳配方），原样
-套到 fifth-run 的 278-bag 全量训练集/同一测试集（chat_topic3 最后10% + G13
-game3-6）上——**结果没能复现 chat 上的成功**：60 epoch 上限，实际 epoch1 就是
-最优点，之后10个epoch（patience=10）全部在退化，early stopping 停在 epoch11。
-最终（epoch1 checkpoint）三项指标全面不如旧模型，chat/G13 分别看时位置相关性
-甚至低于朴素基线（chat: 0.138 vs 朴素0.193；G13: 0.195 vs 朴素0.248），和 chat
-小测试床上"全面追平/超过旧模型"的结果反差很大。
-
-**候选原因（还没验证，留给下一步排查）**：278-bag 数据集每个 epoch 约 7318 个
-batch（234194 windows/32），是 chat 数据集（181 个 batch/epoch）的 ~40 倍——
-lr=1e-3 在这个规模下一个 epoch 内的梯度更新次数暴增，很可能在 epoch1 跑完之前
-（甚至前半程）就已经越过了真正的最优点，只是我们只在 epoch 边界做 checkpoint/
-早停判断，粒度太粗，抓不到 epoch 内部的最优时刻——third-run/fifth-run 也都是
-"早停点异常靠前"（分别是 epoch2、epoch3，相对 60 epoch 的预算都很早），这个模式
-是一致的，不是 seventh-run 独有的新问题。另一个可能：`noise_ratio` 增强的强度
-（噪声标准差0.03、ratio抖动范围0.3~0.7）是针对 chat 这种小/同质数据集调的，278
-个bag 本身已经足够多样，增强可能是冗余甚至有害的正则化，不能照搬同一套强度。
-
-下一步方向（未决定，需要负责人判断优先级）：①更细粒度的 checkpoint/评估（比如
-每 N 个 batch 而不是每个 epoch）来抓住 epoch 内部的最优点；②重新调数据增强强度
-或者在全量数据上干脆不用增强，只测 lr 的效果；③降低 lr 让每个 epoch 内的更新量
-更平缓。
-
-**追加排查（2026-07-15，负责人要求）：数据集大小 vs 数据集成分，哪个才是真正
-的变量？** 用 WordWolfExp（74 个训练 bag，G13 测试 bag 除外）+ chat（2 个训练
-bag）这个中等规模子集（76 个 bag，约1279 batch/epoch，明显少于278-bag的7318，
-但远多于sixth-run纯chat的181）重跑，同一套配方（sparse+noise_ratio增强），
-先用 lr=1e-3，再把 lr 降到 1e-4 对比：
-
-| | chat相关性 | G13相关性 | 合并相关性 |
+| held-out组 | 本实验 | exp4 | 朴素基线 |
 |---|---|---|---|
-| 旧模型(exp4) | 0.191 | 0.255 | 0.310 |
-| wordwolf_chat, lr=1e-3 | 0.104 | 0.183 | 0.274 |
-| wordwolf_chat, lr=1e-4 | 0.132 | 0.188 | 0.273 |
-| 朴素基线 | 0.193 | 0.248 | 0.290 |
+| G1_game3~6（Phase 1） | 9.14 / 67.93% | 12.23 / 57.35% | 11.31 / 59.68% |
+| G8_game3~6（Phase 2） | **11.94 / 58.78%** | 14.07 / 51.36% | 13.36 / 53.01% |
 
-两个变体都在 epoch1~4 就是最优点（lr=1e-4 把最优点从 epoch1 推迟到 epoch4，
-早停从 epoch11 推迟到 epoch14，但最终指标只有边际改善），和 278-bag 全量数据
-表现出**同样的失败模式**。**这排除了"单纯数据量太大"这个解释**（76个bag/1279
-batch每epoch 远小于278个bag，问题依然存在）**，也基本排除了"单纯lr太高"**（降
-10倍只有边际改善）。真正的差异变量指向 **WordWolfExp 数据本身**——sixth-run
-纯 chat（3个bag）能训练成功追平旧模型，一旦混入 WordWolfExp（无论是74个还是
-276个）就失败，这和 third-run 更早的发现（exp4 在多个 WordWolfExp/GRP_meeting
-场次上比 third-run 自己训练的模型更稳定，"训练数据多样性可能比数量更重要"）
-方向一致，但这次是更直接的证据：**不是"WordWolfExp不够多样"，而是"当前这套
-训练配方在 WordWolfExp 这类数据上学不好"，具体是数据本身的什么特性（可能是
-声源定位难度更高、或者 exp4 本来就更擅长这类数据）还需要专门排查**。
+两次都是"本实验 < 朴素基线 < exp4"（peak_dist越小越好）方向完全一致——**泛化
+能力确认真实、可复现，不挑held-out组**。G8整体数字比G1差一截，但**exp4和
+朴素基线自己在G8上也同样更差**（exp4从12.23变14.07，基线从11.31变13.36），
+说明G8本身是更难预测的组（呼应third-run诊断"有些场次本身就不好预测，任何
+模型都难赢基线"），不是本实验配方在G8上失效——本实验和两个对照的相对差距
+反而没有缩小多少。chat（5.99→6.16）、GRPMTG（7.09→6.97）两次结果也基本
+稳定，波动很小，不受WordWolfExp held-out组选择影响（符合预期，这两个域的
+train/eval构成没变）。
 
-**第三个 lr:1e-6（旧模型真实 lr，负责人要求）跑满 60 epoch 的结论**：三个 lr 的
-合并测试集对比（chat相关性 / G13相关性）——exp4: 0.191/0.255；lr=1e-3:
-0.104/0.183（epoch1最优）；lr=1e-4: 0.132/0.188（epoch4最优）；**lr=1e-6:
-0.123/0.182（epoch51最优，跑满60未早停）**。**关键发现：lr=1e-6 让训练曲线彻底
-变健康**——test_loss 全程单调下降、不过拟合，和 1e-3/1e-4 那种"epoch1~4见顶后
-退化"形成鲜明对比，**证实了高 lr 导致的过拟合/不稳定确实是 WordWolfExp"学不好"
-的一部分原因**。**但三个 lr 的最终指标几乎打平、都没突破天花板**：位置相关性全部
-低于 exp4，chat 上还低于朴素基线（0.193）。lr=1e-6 曲线最漂亮，换来的最终指标并
-不比高 lr 更好。**这精确复现了 third-run 早就记录的 lr=1e-6 结论（本文件
-chat_topic3 结果表：曲线健康、指标略变、但没超朴素基线），用 WordWolfExp+chat
-独立验证了一遍。**
+**Phase 3（2026-07-18/19）：clip_len=20 在121-bag规模下和clip_len=10基本
+打平，没有清楚胜负**。同Phase 1训练池（chat+WordWolfExp 74bag+GRP_meeting
+44bag，G1_game3~6held-out），唯一变量`clip_len: 10→20`。15个epoch，256分钟
+（clip_len=10的Phase1只要137分钟），best在epoch3（overall_pd_mean=7.49，
+比Phase1的7.41略差）。val/test均值对比：
 
-**2026-07-16 复核修正（重要，动摇了下面"七轮总结论"的前提）**：位置相关性已弃用，
-去翻 `archive-runs/seventh-run/RESULTS.md` 原始数据重新核对 peak_dist/PSR（当时
-CONTEXT.md 只摘录了相关性数字，peak_dist/PSR 从没写进来过）。**结果和"没能推广"
-的结论正相反**——278-bag baseline 和三个 lr 变体，在 G13（WordWolfExp 本域）和
-combined 测试集上，peak_dist/PSR **基本追平旧模型、明显超过朴素基线**：
-
-| 配置 | G13 peak_dist↓ | G13 PSR↑ | combined peak_dist↓ | combined PSR↑ |
-|---|---|---|---|---|
-| 旧模型(exp4) | 12.88 | 55.40% | 12.20 | 57.03% |
-| 278-bag baseline | 12.85 | 55.68% | 12.29 | 56.78% |
-| wordwolf_chat lr=1e-3 | 12.93 | 55.59% | 12.42 | 56.72% |
-| wordwolf_chat lr=1e-4 | 12.77 | 55.89% | 12.28 | 56.67% |
-| wordwolf_chat lr=1e-6 | 12.88 | 55.61% | 12.39 | 56.57% |
-| 朴素基线 | 13.06 | 52.69% | 12.48 | 54.21% |
-
-四个变体的 G13/combined peak_dist 都和 exp4 差在 0.2 以内、PSR 差在 0.5 个百分点
-以内——统计上基本打平，而且清楚超过朴素基线。**只有 chat 这个192窗口的小子集上
-exp4 明显领先**（peak_dist 7.48 vs 新模型 8.3~8.7），这个差距被之前"三域分开报告
-但结论按相关性下"的写法放大成了"全面没能推广"。**当时"没能推广"/"WordWolfExp
-这类数据学不好"的判断，主要证据来自相关性（chat 0.104~0.138 vs 基线0.193，G13
-0.182~0.195 vs 基线0.248），peak_dist/PSR 从未真正支持这个结论。** 换句话说，
-"调 lr/数据量/多样性/增强这套配方在 WordWolfExp 上学不好"这个说法本身可能是
-不准确的——peak_dist/PSR 显示它在 WordWolfExp(G13)域上其实学得还行。
-
-**2026-07-16 第二次补充：train/test t+2 分列**（新标准；baseline训练集278bag/
-234194窗口、wordwolf_chat系列训练集76bag/40946窗口，均等距抽样至约2~3万窗口，
-见本节开头说明）：
-
-| checkpoint (peak_dist↓/PSR↑) | train | test[chat] | test[G13] | test[combined] |
-|---|---|---|---|---|
-| exp4（不参与train评估） | — | 7.81/67.19% | 13.17/54.17% | 12.49/55.83% |
-| baseline (278bag) | 9.62 / 62.69% | 8.65/64.06% | 13.17/54.44% | 12.61/55.65% |
-| wordwolf_chat lr=1e-3 | 10.45 / 64.17% | 9.00/64.06% | 13.35/54.37% | 12.79/55.59% |
-| wordwolf_chat lr=1e-4 | 9.98 / 64.85% | 9.08/61.46% | 12.96/55.76% | 12.50/56.37% |
-| wordwolf_chat lr=1e-6 | 10.23 / 64.44% | 8.71/64.06% | 13.19/54.51% | 12.63/55.71% |
-| 朴素基线(baseline train) | 10.24 / 56.95% | 9.03/61.98% | 13.49/51.46% | 12.89/52.94% |
-| 朴素基线(wordwolf_chat train) | 11.33 / 59.61% | 同上 | 同上 | 同上 |
-
-四个变体 train 上都清楚超过各自的朴素基线，test 三组也都和 exp4 基本打平、超过
-朴素基线，train/test 差距不大——t+2 单独看和 t+1~t+4 聚合结论一致，**没有证据
-支持"WordWolfExp 数据训练配方学不好"这个说法，也没有过拟合迹象**。
-
-**七轮总结论（原表述，前提已被上面修正削弱，仅供参照）**：调 lr / 数据量 / 多样性 /
-数据增强这些外围旋钮，最多让训练过程变健康（lr=1e-6 的健康曲线），但**动不了位置
-相关性这个天花板**。天花板在别处——最可能是 loss 的监督目标（七轮都是像素重建，
-从没直接监督峰值位置）。eighth-run 就是攻这个（见"当前开放问题"一节）。**这个
-"天花板"叙事本身是用位置相关性定义的，该指标已弃用——eighth-run 存在的原始动机
-需要重新审视，见文件末尾"下一步方向"。**
-
-完整逐步数字见 `seventh-run/RESULTS.md`。
-
-### eighth-run：换 loss 监督目标 + 更长窗口（2026-07-15 起，进行中）
-
-**这是当前活跃的 run**（顶层 `eighth-run/`，未归档）。动机见"当前开放问题"一节：
-七轮都在调外围旋钮（lr/数据量/多样性/增强/loss形状），位置相关性天花板没动过；
-唯一没变过的是 loss 的**监督对象**（七轮都是对整张声图做像素重建 MSE/BCE/KL，
-而 care 的是峰值位置）。eighth-run 攻这个,两个实验分开做、都在 chat 上小测。
-
-**代码位置**：`eighth-run/train/`（`dataset.py` 精简成 chat-only sparse；
-`losses.py` 是核心新增——`soft_argmax_loss`/`combined_loss`；`train.py` 加了
-`--loss {mse,softargmax,combined}` 和 `--clip-len`，**早停监控 test peak_dist 均值
-而非 test_loss**，让不同 loss 的对照公平）；评估
-`eighth-run/evaluation/compare_ablations.py --run-name <name> --clip-len <10|20>`
-（exp4 是固定10帧模型，clip20 时喂它输入的最后10帧 `x[:,-10:]`）。
-
-**四条实验命令**（cd 到 `eighth-run/train/`，其余超参固定在 sixth-run chat 最佳
-配方 lr=1e-3+noise_ratio 增强）：
-```
-# 实验A：loss 监督目标
-python -u train.py --loss mse        --clip-len 10 --run-name A_mse_control
-python -u train.py --loss softargmax --clip-len 10 --run-name A_softargmax
-# 实验B：输入窗口长度（对照复用 A_mse_control，即 clip_len=10 那个）
-python -u train.py --loss mse        --clip-len 20 --run-name B_clip20
-```
-每个跑完 `compare_ablations.py --run-name <name> --clip-len <10或20>` 出对比报告
-（追加到 `eighth-run/RESULTS.md`，含 exp4 和朴素基线）。chat 每 epoch ~73s。
-
-**soft_argmax_loss 是什么**（`losses.py`）：预测声图归一化成空间概率
-`p=softmax(P/τ)`，算期望坐标 `row=Σi·p_ij, col=Σj·p_ij`，对真值峰值 `(i*,j*)`
-求距离² `(row-i*)²+(col-j*)²`（t+1~t+4 各算再平均）。可导,直接监督峰值位置。
-冒烟测试过：峰值对准→loss≈0，偏10格→loss=100（正好10²），梯度正常。
-
-**实验A结论（2026-07-16，负结果，已定论）**：`A_mse_control` 早停epoch18，
-peak_dist_mean=6.19，PSR_agg=74.71%，位置相关性0.298——基本追平exp4(6.14/
-74.88%/0.313)，符合预期。`A_softargmax` 三个学习率都跑了（1e-3/1e-4/1e-6），
-**全部不敌MSE对照组，没有一个突破位置相关性天花板**：
-
-| 配置 | peak_dist均值 | PSR_agg | 位置相关性均值 |
-|---|---|---|---|
-| A_mse_control | 6.19 | 74.71% | 0.298 |
-| baseline(repeat-last) | 7.14 | 70.97% | 0.238 |
-| A_softargmax lr=1e-3 | 9.11 | 72.62% | 0.259 |
-| A_softargmax lr=1e-4 | 7.36 | 66.86% | 0.269 |
-| A_softargmax lr=1e-6 | 9.09 | 20.19% | 0.242 |
-
-lr=1e-3原始训练不稳定（PSR中途震荡）；lr=1e-4三者中最好但仍全面不敌MSE；
-lr=1e-6曲线最"健康"（peak_dist单调下降）但PSR从51%一路崩到epoch35的5.63%——
-**确认是塌陷到低方差固定预测点**：平均距离数字尚可，但几乎不落入k=5成功窗口。
-调小lr没能治好这个问题，只是让塌陷过程更平滑、更容易被误读为"在正常训练"。
-**结论：soft-argmax直接监督峰值位置这个loss设计，在当前架构/数据规模下不仅没
-打破天花板，反而比像素重建MSE更容易诱导塌陷——三个学习率贯穿验证，判定为
-负结果，不再追加实验。** MSE仍是目前最优loss。详细数字见`eighth-run/RESULTS.md`。
-**（2026-07-16复核：这个结论不依赖位置相关性也成立——三个lr的peak_dist全部比
-朴素基线还差，lr=1e-6的PSR崩溃是直接从训练曲线本身看出来的，独立证据充分，
-结论不变。）**
-
-**实验B结果（2026-07-16，原判"正向信号"，复核后改判"不确定"）**：`--loss mse
---clip-len 20 --run-name B_clip20`（其余同sixth-run chat配方），显存不够默认
-bs=32（clip翻倍后模型参数38M vs clip10的13M），改`--bs 16`才跑通。早停epoch17，
-最优peak_dist_mean=6.20@epoch7，PSR_agg=74.57%。**2026-07-16复核**：当时"正向
-信号/目前最好结果"的判断完全建立在位置相关性（0.318 vs A_mse_control的0.298）
-上，该指标已弃用。**只看peak_dist/PSR，B_clip20(6.20/74.57%)和A_mse_control
-(6.19/74.71%)几乎是同一个数字**，统计上分不出高下。**修正结论：窗口从5s拉长到
-10s，在还信得过的指标上看不出改善，是个中性结果，不是"目前最好的结果"。**
-
-**follow-up：加WordWolfExp G1+G2训练、G3 game3-6 held-out测试（2026-07-16，
-原判"好坏参半/疑似塌陷"，复核后改判"正向泛化结果"）**：负责人要求验证clip_len=20
-的窗口收益能否推广到真正跨组泛化。改动`dataset.py`加`MixedWindowDataset`
-（通用化：`split_bags`按train_ratio时间切分如chat，`full_train_bags`/
-`full_test_bags`整段专属训练或测试）+`--dataset chat_g1g2_g3`开关；
-`compare_ablations.py`同步支持，**chat和G3两组分开报告，不合并平均**（吸取
-fifth-run的教训）。G3的game2_Video/interview两个bag按负责人明确要求完全不用
-（不同于fifth-run对G13的处理，那次留在训练集接受同组泄漏风险——这次选更干净
-的切分）。配方同B_clip20（loss=mse, clip_len=20, lr=1e-3+noise_ratio增强），
-早停epoch13@best epoch2。run名`C_g1g2_train_g3_test`。
-
-结果分两组（位置相关性列已弃用，仅存档参考不作为结论依据）：
-| 测试组 | peak_dist↓ | PSR_agg↑ |
+| 场景 | clip_len=10（Phase 1） | clip_len=20（Phase 3） |
 |---|---|---|
-| chat（581窗口，含在训练集90%切分里） 新模型 | 6.34 | 73.96% |
-| chat exp4 / baseline | 6.14 / 7.14 | 74.87% / 71.05% |
-| G3 game3-6（1442窗口，完全held-out） 新模型 | **10.71** | **63.72%** |
-| G3 exp4 / baseline | 12.94 / 11.98 | 55.38% / 57.97% |
+| chat | 5.99 / 75.41% | 6.30 / 74.00%（略差） |
+| WordWolfExp（held-out） | 9.14 / 67.93% | 9.16 / 68.32%（几乎打平） |
+| GRPMTG（held-out） | 7.09 / 59.65% | 7.01 / 60.92%（略好） |
 
-chat上和B_clip20一致（逼近exp4）。G3上新模型peak_dist/PSR双双清楚超过exp4和
-朴素基线。**2026-07-16复核**：原先"看着好但可能塌陷到保守预测"的怀疑，唯一
-依据是位置相关性在G3上低于基线（0.181<0.281），该指标已弃用，**这个怀疑没有
-独立证据支撑，予以撤回**。**修正结论：这是目前项目里第一次在真正没见过的
-WordWolfExp组上，peak_dist+PSR都全面超过旧模型和朴素基线的正向跨组泛化结果**
-——chat+G1+G2训练、clip_len=20 这套配方值得作为下一步的基础配方，而不是被
-怀疑塌陷搁置。（严谨地说：撤回怀疑不等于证明没塌陷，如果想彻底确认，可以做
-可视化诊断直接看预测输出是否收缩成固定点，见"下一步"。）
+三个场景互有胜负、差距都在噪声范围内，**没有清楚证据支持clip_len=20更
+好**——但clip_len=20训练时间约2倍、参数量约3倍（38M vs 13M），性价比明显
+更差。**之前"clip_len=20的收益需要更大/更多样训练数据才能体现"这个猜想
+（源自旧PC eighth-run的C配方），在121-bag规模下仍未被证实**——可能需要
+更大规模才能看到效果，也可能这个猜想本身不成立。**结论：clip_len=10仍是
+更实际的默认选择**，除非以后规模大幅扩大后有理由重新测。
 
-**实验D结果（2026-07-16，负结果，独立于相关性，结论不变）**：测试"把模型容量
-集中在单一近期时间点(+1s=t+2)是否有质的提升"——改`dataset.py`加`pred_offsets`
-参数（跳过中间帧，只在指定offset构造窗口/target，不是训练完4步再切片），
-`train.py`加`--pred-offsets`，`compare_ablations.py`同步支持（exp4从固定4步
-输出里切出对应offset做公平对比）。配方同C（chat+G1+G2训练/G3测试，clip_len=20,
-lr=1e-3+noise_ratio），`--pred-offsets 2`，run名`D_horizon1s`，早停epoch15@best
-epoch5。
+**Phase 4（2026-07-19）：训练池从121个bag翻倍到全量283个（加157个新来源：
+ATR_RIKEN_1F/3f、olab_0630/olab_rev_0630、Demonstration_Data、
+demo_data_0318、egoSAS、riken_3f、Testrun0420等，全部WHOLLY进训练、无
+held-out设计），在已有的3个评估域上没有可辨识的收益，但也没有变差**。
+`dataset.py`新增`OTHER_BAGS`（动态派生=train-data下所有不属于chat/
+wordwolfexp/grpmtg的bag，不写死清单，跟着train-data目录走）+
+`make_datasets(use_full_pool=True)`，`train.py`加`--use-full-pool`开关，
+`report.py`同步支持"总的"pooled train计入other域。配方同Phase1
+（clip_len=10, G1_game3~6held-out），组合训练池229,871个窗口（约121-bag
+规模的2倍）。17个epoch，300分钟（约5小时），best在epoch5
+（overall_pd_mean=7.47，比Phase1的7.41略差）。val/test均值对比：
 
-| | chat peak_dist(t+2)↓ | chat PSR(t+2)↑ | G3 peak_dist(t+2)↓ | G3 PSR(t+2)↑ |
+| 场景 | val/test窗口数 | 121-bag（Phase 1） | 283-bag全量（Phase 4） | Δpeak_dist |
 |---|---|---|---|---|
-| exp4 | 6.25 | 74.31% | 13.00 | 55.28% |
-| C（联合4步，取t+2切片） | 6.36 | 73.96% | 10.97 | 62.57% |
-| D（专门只学t+2） | 6.36 | 73.96% | 11.02 | 62.71% |
-| baseline | 7.11 | 71.18% | 11.65 | 59.65% |
+| 总的（四域加权） | 7,872 | 7.39 / 62.41% | 7.35 / 63.11% | -0.04（微降/微好） |
+| chat | 608（四场景最小） | 5.99 / 75.41% | 6.31 / 74.05% | +0.32（升/略差） |
+| WordWolfExp（held-out） | 1,472 | 9.14 / 67.93% | 9.09 / 68.48% | -0.05（微降/微好） |
+| GRPMTG（held-out） | 5,792 | 7.09 / 59.65% | 7.02 / 60.60% | -0.07（微降/微好） |
 
-D和C的t+2切片几乎逐位重合（chat上完全一样，G3上差0.05/0.14个百分点，都在噪声
-范围内）。**结论：把模型容量集中在单一时间点，对该时间点的精度没有质的提升**
-——"联合预测4步稀释了近期精度"这个假设不成立，瓶颈不在输出头分摊注意力，更可能
-是输入信息本身对该时刻位置的可预测性上限，或架构/表征能力问题。
+**解读（2026-07-19修正，之前"负结果"措辞偏负面，改成更中性的判断）**：
+总的/wordwolfexp/grpmtg三项Δpeak_dist都只有0.04~0.07，比Phase2交叉验证
+held-out组时观察到的"稳定域"噪声波动（chat/grpmtg在换G1→G8时分别波动
+0.17/0.12，当时判定为"基本稳定"）还要小，**方向偏正但完全落在噪声量级内，
+不能算证实的提升**——这个项目所有实验都是单次训练，没有多种子/置信区间，
+"提升"和"噪声"目前无法严格区分。chat是唯一Δ较大（+0.32）且方向为负的一项，
+但chat的val集只有608个窗口，是四场景里最小的（grpmtg有5792个，差近10倍），
+按噪声应随样本量增大而减小的直觉，chat这项波动偏大很可能主要是小样本噪声，
+不代表真实性能下降。**综合结论：121→283bag（数据量翻倍）没有测出可与噪声
+区分的收益，但也没有可信的下滑证据，是"持平"而不是"变差"**。新加的157个
+bag本身在train上表现不错（本实验8.38 vs exp4 10.35 vs 朴素基线10.65），
+但没有对应的held-out测试，无法验证这些新来源本身能不能提升"对没见过数据
+的泛化"，只能看它们对已有3个held-out/val域的间接影响——目前看是持平。
+瓶颈可能不在数据量本身（架构容量、任务本身的可预测性上限，或者新加的157
+个bag和现有held-out测试域关联度不够高、"多样性"没有真正命中要害，呼应
+third-run"数据多样性可能比数量更重要"的老猜想），但也可能这次翻倍本来就
+不该期待很大提升——Phase1那次的大幅提升来自"第一次让训练池覆盖held-out域
+的数据分布"这个质变，Phase4只是同域数据量的量变，边际收益递减是正常预期，
+不必然说明方法或数据有问题。具体排查过程和结论见下"噪声排查"/"过拟合探针"/
+"正则化排查"/"157-bag held-out测试"各小节，以及"run-2收尾"一节的最终判断。
 
-**2026-07-16 补充：全部7个checkpoint的 train/test t+2 分列**（新标准；A/B系列
-训练集chat-only 5792~5760窗口全量，C/D训练集chat+G1+G2共11936~11968窗口全量，
-D只预测t+2这一步，本来就没有聚合掩盖的问题）：
+**噪声排查（2026-07-19）：Phase1配方（121-bag池，同val/test集）额外跑2个
+种子（1337、2024），用`report.py`同口径评估，确认Phase4的Δ落在噪声内**。
+`train.py`本身没有`--resume`，另外Phase4的`log.csv`已经显示继续训练只会
+让指标持续变差（epoch5后又跑了12个epoch，overall_pd_mean从7.47恶化到
+10.21，wordwolfexp PSR腰斩），不支持"早停太早"的猜想，所以没有另外为这个
+排查再跑一次续训。种子42（Phase1原始）/1337/2024三次独立训练，val/test
+peak_dist（PSR）对比：
 
-| checkpoint (peak_dist↓/PSR↑) | train | test[chat] | test[G3] |
-|---|---|---|---|
-| A_mse_control | 6.62 / 72.13% | 6.17 / 75.00% | — |
-| A_softargmax | 9.53 / 69.39% | 9.33 / 73.03% | — |
-| A_softargmax_lr1e-4 | 7.59 / 66.44% | 6.97 / 69.08% | — |
-| A_softargmax_lr1e-6 | 9.80 / **18.80%** | 9.72 / **16.94%** | — |
-| B_clip20 | 6.30 / 73.68% | 6.35 / 74.13% | — |
-| C_g1g2_train_g3_test | 9.27 / 64.83% | 6.36 / 73.96% | 10.97 / 62.57% |
-| D_horizon1s | 9.35 / 65.02% | 6.36 / 73.96% | 11.02 / 62.71% |
-| 朴素基线(A/B, chat-only train) | 7.45 / 68.32% | 7.09 / 71.05% | — |
-| 朴素基线(C/D, chat+G1+G2 train) | 10.27 / 60.31% | 7.11 / 71.18% | 11.62 / 59.72% |
-| exp4(G3, 仅test，来自compare_ablations.py历史记录) | — | — | 12.96 / 55.42% |
+| 场景 | seed42（Phase1原始） | seed1337 | seed2024 | 三seed跨度 | Phase4（283-bag） |
+|---|---|---|---|---|---|
+| 总的 | 7.39 / 62.41% | 7.27 / 63.48% | 7.32 / 63.15% | 0.12 | 7.35 / 63.11%（**落在跨度内**） |
+| chat | 5.99 / 75.41% | 6.25 / 73.89% | 6.22 / 74.18% | 0.26 | 6.31 / 74.05%（比三seed上限只高0.06） |
+| wordwolfexp（held-out） | 9.14 / 67.93% | 9.16 / 68.39% | 9.19 / 68.34% | **0.05**（这个域三次种子出奇地稳） | 9.09 / 68.48%（**比三个seed都好**） |
+| grpmtg（held-out） | 7.09 / 59.65% | 6.90 / 61.14% | 6.96 / 60.68% | 0.19 | 7.02 / 60.60%（**落在跨度内**） |
 
-**A_softargmax_lr1e-6 的塌陷在 train 集上同样出现**（PSR 18.80%，比 test 的
-16.94%还高一点但同样崩溃）——确认是模型本身塌陷到低方差固定预测，不是"只在
-没见过的数据上崩"，train/test 一致说明这是优化过程的问题，不是过拟合/欠拟合的
-常规模式。**C_g1g2_train_g3_test 在 train 集上也清楚超过朴素基线**（9.27 vs
-10.27），train/test 差距不大，进一步支持"C 的 G3 正向结果不是靠塌陷到保守
-预测撞出来的"这个判断（呼应下面对"疑似塌陷"怀疑的撤回）。
+**结论：Phase4的"持平"判断得到确认，不再是类比推测**。总的/wordwolfexp/
+grpmtg三项，Phase4的数字都落在（或优于）三次独立种子重跑划出的自然波动
+范围内；chat唯一超出种子跨度的量也很小（0.06），且chat val集样本量本来
+就是四场景里最小的（608窗口），噪声本来就该更大，不构成有力的"变差"证据。
+**至此，121→283bag数据量翻倍"没有测出可辨识收益"这个结论已经用独立种子
+重跑验证过，不是单次训练的偶然**。副产品：wordwolfexp（held-out）域三次
+种子跨度只有0.05，是四个场景里最稳的，这个域的泛化能力看起来是这套配方
+里最可靠、复现性最好的部分。
 
-**下一步（2026-07-16更新）**：C实验的正向结果（chat+G1+G2训练+clip_len=20，
-G3上peak_dist/PSR全面超过exp4/基线）目前是eighth-run里最值得延续的方向——建议
-巩固这套配方（可能进一步扩大训练组、或验证在更多held-out组上是否稳定），而不是
-继续在loss形状（已证负）或窗口长度单独效应（已证不确定）上纠结。另外，"七轮
-总结论"驱动eighth-run立项的原始前提（"调外围旋钮动不了位置相关性天花板"）本身
-建立在已弃用的指标上，seventh-run复核后peak_dist/PSR其实基本追平旧模型（见
-seventh-run小节复核说明）——eighth-run"换loss监督目标"这整个方向的必要性值得
-重新评估，可能"模型学不好"这个问题本身被高估了。
+## 开放问题（run-1新增，不含旧文件里的历史开放问题）
 
-## 数据集（详见 `preprocessing/DATA_REPORT.md`）
+- **`exp4_new` 在当前预处理约定下输出异常，暂缓验证**（2026-07-18）：
+  `access-model/weights/config_simvp_exp4_new.pt`（从`/home/chen/Documents/
+  R4/results/`找到，新PC上首次接入）用和exp4完全相同的预处理（exp变换target、
+  sm_ratio=0.5混合input——这套约定已用exp4的数字和旧CONTEXT.md历史记录完全
+  吻合独立验证过）跑chat数据，peak_dist~46（64x64网格上接近对角线一半）、
+  PSR=0%，明显异常。排除了权重文件损坏（无NaN/Inf，各层均值/标准差和exp4
+  同量级）、通道顺序颠倒（交换后数字完全不变）。怀疑是exp4_new真实的训练
+  预处理约定和exp4不一样（比如target归一化方式、sm_ratio是否真的是0.5——
+  配置文件字段不代表真的在用，见旧CONTEXT.md教训），但从没人验证过它的
+  训练代码。**负责人决定暂不深挖**（成本不确定，可能要翻`/home/chen/
+  Documents/R4`下的训练代码才能查清），`archive-runs/old-runs-2/run-1/evaluation/report.py`的对照
+  表格暂时只留exp4+朴素基线+本实验三个模型，`access-model/predict.py`里
+  `exp4_new`仍保留注册（`EXP_NAMES`），以后想查再查。
 
-**2026-07-12/13 PSSPData 两轮整盘重组 + 全量重跑**：负责人把所有数据集整理到
-统一的 `/media/chen/Extreme SSD/PSSPData/` 下（`WordWolfExp` 并入，`Experiment0312`/
-`Experiment1126`/`Testrun0420` 合并进 `WordWolfExp/` 内部，`ProjectMobileRobot_3f`
-被更大的 `ATR_teleoperation/data_RIKEN_3f` 取代、新增 `data_RIKEN_1F`），全部
-集合统一重新提取。**当前 `train-data/` 283 个 npz（241,475 ticks ≈ 33.54 小时），
-没有 `train-data-aux/`**——负责人明确要求不做默认排除判断，全部进 `train-data/`，
-后续再判断哪些该挪走。具体每个数据集的规模见 `DATA_REPORT.md` 的两张表。
+## 踩过的坑
 
-QC 视频（`soundmap-videos/`）和 `video-generator/bag2video.py` 完全一致的设计：
-主画面（声图叠加摄像头，若有 `/head/head_box`+`/room2_audio/vad` 话题则叠加
-head-box/speaking-box/4-label 标注——负责人确认 WordWolfExp 下所有 bag（G-前缀、
-EXP-前缀、testrun_0420_*）都有这两个话题）下方拼接一条滚动面板，显示 room1
-音量包络+silero-VAD 语音段，缺 4-label 话题的集合优雅降级为纯 VAD 条。
+- **`pip install timm`（不加`--index-url`）会偷偷把torch升级掉，表现成"GPU突然
+  连不上CUDA"的假象**（2026-07-18）：`train`venv装完`torch==2.7.1+cu118`验证
+  GPU可用后，装`timm`（simvp.py的GSTA backbone依赖）时它把`torchvision`作为
+  依赖一起装，但没指定`--index-url`，pip从默认PyPI解析`torchvision`时连带把
+  torch静默升到了`2.13.0+cu130`——cu130需要新驱动（≥525+），这块机器驱动是
+  470.256.02，于是`torch.cuda.is_available()`变成`False`，报错"driver too old
+  (found version 11040)"。**排查时最容易被带偏成"GPU/驱动坏了"**（一度怀疑
+  persistence mode/GPU电源状态，`sudo nvidia-smi -pm 1`试过没用）——**真正
+  判据是`workon r4`下同一块GPU当时`torch.cuda.is_available()`是`True`**，
+  证明GPU/驱动本身没问题，问题在`train`venv自己的torch版本被换掉了
+  （`pip list | grep torch`一看`torch 2.13.0`就现形）。**教训：装任何会拉
+  torchvision/torchaudio的包（timm等）时，同一条pip命令里把torch/torchvision
+  也显式钉住版本+`--index-url`一起传，不要让pip自己去默认索引解析，否则会
+  静默换掉已经验证过兼容驱动的torch版本。**
 
-**两个真实 bug，均已修复**：①超长音频先拼接全16声道数组再转 float32 才降混
-单声道，峰值内存能到 ~33GB——改成逐块降混再拼接；②`cv2.VideoWriter` 从不写
-音轨，之前生成的 QC 视频全部是哑的——改成先写无声临时视频，再用 ffmpeg 把
-room1 mono 音频（+30dB 增益，和 bag2video.py 一致）混流进去（`_mux_audio()`）。
+## 开放问题 / 下一步方向
 
-## 代码/工作流约定
+run-1（chat-only）的开放问题见上"开放问题（run-1新增）"一节（`exp4_new`
+预处理约定未验证，暂缓）。
 
-- 每轮 run 自包含，只共享 `train-data/`（npz池）——参见"仓库结构"。
-- `preprocessing/build_dataset.py`：硬编码 `JOBS` 注册表（一个 collection 一条），
-  `--job <label>` 跑单个/不传跑全部，同时产出 npz 和 QC 视频
-  （`soundmap-videos/{name}.mp4`：主画面+下方 VAD/label 滚动面板，完全照搬
-  `video-generator/bag2video.py`/`room1_vad.py`/`labeling.py`，见"数据集"一节）。
-  视频 10Hz 摄像头/2Hz 声图解耦（声图生成器是唯一昂贵步骤，不多跑，10Hz 只是
-  摄像头子帧更流畅）。单个 bag 的 video-only 重跑（npz 已存在只补视频）用独立
-  subprocess 隔离（`--video-only-bag` CLI 分支），避免大 bag 之间内存跨 bag 累积。
-- 每轮的 `RESULTS.md` 由对比脚本自动追加，不手动整理，历史记录不覆盖。
-- `compare_old_new.py`（third-run 版）支持 `--run-name`（选 checkpoint）和
-  `--test-bags`（覆盖默认测试集，用于诊断性对比，非正式评估）两个参数，同一份
-  代码复用于不同对比场景。
-- 不留临时冒烟测试脚本在工作区里，用完即删。
+**run-2的核心开放问题（历史记录，全部已解决/已收尾）**：121→283bag数据量
+翻倍没有测出可与噪声区分的提升，当时留了三个候选排查方向，现在全部做完了：
+1. ~~给Phase 4新加的157个bag设计held-out测试组~~——**已完成**（见下
+   "157-bag held-out测试"小节），结果是明确负面。
+2. ~~排查early stopping在大数据下是不是依然过早~~——**已用Phase4自己的
+   log.csv关掉，不需要单独实验**：epoch5（best）之后又跑了12个epoch（3次
+   lr衰减耗尽），overall_pd_mean从7.47持续恶化到10.21，不支持"早停太早"，
+   更像是epoch5附近就是真实最优点。
+3. ~~多种子重跑估计噪声量级~~——**已完成**（seed1337/seed2024，见上"噪声
+   排查"小节），结论：Phase4三个已有域的Δ都落在三种子自然波动范围内。
 
-## 踩过的坑（教训，避免重复犯）
+**过拟合探针（2026-07-19/20）：`overfit_probe.py`在24-bag小池（chat 3 +
+WordWolfExp G1~G3组18 + MTG 3个，38,572训练窗口）上关掉早停跑满100
+epoch——确认容量不是瓶颈，是明显的过拟合/泛化差距问题**。train peak_dist
+从epoch1的10.49一路单调降到epoch100的**2.36**（train PSR 57%→93.5%），
+全程没有趋平迹象，说明13M参数SimVP(gsta, N_S=N_T=4)架构完全有能力把train
+指标压得很低，容量绰绰有余。但用`eval_overfit_checkpoint.py`在两个**这个
+池子完全没见过**的域（WordWolfExp G8组、GRP_meeting官方held-out bag）上
+分别测了epoch67和epoch100的快照：
 
-- **不查代码就下结论会出错，出过两次**：①最初以为旧训练用原始 0~160 量级当
-  target（依据未验证的脚本快照），后来查实际部署代码才发现是 exp 变换；②最初
-  说旧代码 train/test 有帧级重叠，其实已经处理好了，真正的问题是"同对话内切分"
-  这种更隐蔽的泄漏。**教训：翻旧代码找证据，优先信实际部署/被使用过的代码路径，
-  不信没被证实过的脚本快照。**
-- **外部持续增长的数据源不能只信第一次的目录扫描**：`Experiment1126` 漏了一半
-  （只扫到 `EXP1_*` 没扫到 `EXP2_*`），`ProjectMobileRobot_3f`/`riken_3f`/
-  `Testrun0420` 是后来才上传、复查才发现的。
-- **可视化对比必须共享色阶，不能每张图各自归一化**——第一版 per-tile 独立
-  min-max 归一化把真实的锐利度差异抹平了，负责人一眼就看出图上不对。
-- **`x or fallback` 不能用在 numpy 数组上**——数组的真值判断是歧义的，会报
-  `ValueError: truth value of an array...`，要用显式 `is None` 判断。
-- **配置文件里的字段不代表真的在用**——旧模型 config 里的 `eta_min`（cosine
-  annealing scheduler 参数）对应的 scheduler 代码其实是注释掉的，旧模型实际
-  训练全程是恒定 lr。**要求"复现旧配置"时，先看训练代码有没有真的用这个字段，
-  不要只看 config 文件。**
-- **磁盘 I/O 可能被其他并发任务拖慢**：处理超大 PSSPData bag 时遇到过和自己的
-  调查脚本、其他并发进程抢 I/O 的情况，教训是大文件查询要避免全表扫描（用
-  `LIMIT`/`OFFSET` 而不是拉全部数据）。
-- **wolf 虚拟环境**：本项目所有 Python 命令必须在 `wolf` 虚拟环境下跑，不要用
-  系统/其他环境（wolf 环境实测比其他环境明显更快，可能是 torch/cuDNN 版本差异）。
-- **新写光流/warping 类架构，残差累积必须限幅，且要有平滑正则**——不限幅会数值
-  爆炸，限幅了但 lr 太大还会饱和死锁（loss 冻结不代表收敛，可能是梯度死区），
-  没有平滑正则会出现"清晰但形状撕裂"的 warping 伪影，肉眼看比看 loss 数字更容易
-  发现这类问题（细节见 fourth-run 一节）。
-- **两个同名文件在 sys.path 上会互相覆盖**：`fourth-run/train/train.py` 和
-  `archive-runs/third-run/train/train.py` 撞名，`sys.path.insert` 的顺序决定
-  `import train` 到底拿到哪一份——写跨 run 引用代码时要注意顺序，或者干脆避免
-  跨目录 import 同名模块。
-- **降混/大数组操作要按块处理，不要先拼接全量数组再转类型/降维**：
-  `VideoPanel.__init__` 原来是 `np.concatenate([...16声道...]).astype(float32)
-  .mean(axis=1)`，对 2.15 小时的超长 bag 峰值内存到 ~33GB，直接 OOM 崩溃过一次；
-  改成每个消息块先降混再拼接，峰值降到接近最终结果大小。**这台机器 swap 空间
-  充裕（47Gi），负责人明确表示"available RAM 变低不用紧张，可以用 swap"——
-  只要不是内核真的 OOM-kill 或 swap 也快耗尽，不需要为了"available 低"就抢先
-  杀进程。**
-- **`index.csv` 只在整个 job 循环跑完才写一次，进程中途被打断会丢索引行（不丢
-  npz）**：`process_job()` 的 `write_index()` 在 `todo_full` 循环外面，只调用一次。
-  这次 PSSPData 重跑中途被打断过，导致 `GRP_meeting` 44 个 npz 里有 39 个已经
-  落盘但 `index.csv` 没记录——如果训练代码靠 `index.csv` 做 split，这些 bag 会
-  被静默忽略。已经从每个 npz 自带的 `tick_ts` 反推 `dur_s`/`n_ticks` 手动补全，
-  但代码本身没改（更彻底的修复是每个 bag 处理完立即增量写 index，不是攒到最后）。
-  **教训：中途可能被打断的批处理任务，产出索引应该增量持久化，不要攒到最后一次性
-  写。**
+| 域 | epoch67快照 | epoch100快照 | exp4 | 朴素基线 |
+|---|---|---|---|---|
+| WordWolfExp G8（unseen） | 14.68 / 48.16% | 14.99 / 46.87% | 14.07 / 51.36% | 13.36 / 53.01% |
+| GRPMTG held-out bag | 8.45 / 51.47% | 8.47 / 50.97% | 6.98 / 62.59% | 7.87 / 55.17% |
 
-## 当前开放问题 / 下一步方向
+两个域在epoch67时就已经比exp4和朴素基线都差，epoch67→100之间train继续
+大幅改善但这两个未见过的域基本停在原地（微幅变差，且变化量落在此前噪声
+排查确认的量级内，不算继续恶化的强证据）——**说明过拟合在早期（epoch5~
+67之间某处）就已经把泛化能力打没了，之后主要是在纯粹记忆训练数据，不再
+影响（或轻微影响）未见过的数据**。这和Phase1~4历史log里"continuing past
+best epoch只会变差"的现象是同一件事的更极端展示，不是24-bag小池的特例。
+**结论：容量不是瓶颈，瓶颈是过拟合/泛化差距，下一步应该直接对抗这个问题，
+而不是扩大模型规模**（扩大规模大概率只会让过拟合更快发生）。
 
-**2026-07-16 大幅更新**：eighth-run 的实验A/B/C/D 都已跑完（见 eighth-run 小节），
-同时**位置相关性指标已弃用**（负责人判断其计算方式不合理，见"关键诊断指标"一节），
-往后只用 peak_dist/PSR。这次复核也发现 fifth-run/seventh-run 当年"没能推广"/
-"全面不如旧模型"的判断很大程度是被相关性数字带偏的，peak_dist/PSR 本身其实基本
-追平旧模型（见对应小节的复核说明）。**下面是复核后的当前状态**：
+**正则化排查（2026-07-20，已完成）**：已确认当前配方并非"零正则化"——
+`simvp.py`的`SimVP`类默认`drop=0.2, drop_path=0.2`，train.py此前没有覆盖
+它们，所以Phase1~4和过拟合探针全程都在dropout=0.2+stochastic depth=0.2+
+weight_decay=0.01+noise_ratio增强的组合下跑的，仍然明显过拟合——说明现有
+正则化力度不够，或者容量本身（相对当前跨域数据规模）就偏大。给train.py
+新增了`--drop`/`--drop-path`/`--aug-noise-std`/`--aug-ratio-lo`/
+`--aug-ratio-hi`几个CLI开关（原来这几个旋钮不能从命令行调），在Phase1的
+121-bag池上排了4个单变量对照实验（都用seed=42，方便直接对比Phase1原始
+基线），run-name分别是`reg_wd0.1`（weight_decay 0.01→0.1）、
+`reg_aug_strong`（增强力度加大：ratio_range (0.3,0.7)→(0.1,0.9)，
+noise_std 0.03→0.06）、`reg_capacity_2x2`（**容量缩小**N_S=N_T 4→2，
+重新验证run-1 Phase3"容量不是瓶颈"这个旧结论在当前跨域大规模数据下是否
+依然成立——旧结论是在chat-only小数据上测的，用户提出的"数据集不够大、
+模型是不是太大"这个问题值得在当前规模重新测）、`reg_drop0.4`（drop/
+drop_path 0.2→0.4）。四个实验顺序跑完，用wordwolfexp/grpmtg held-out结果
+做裁判，全部用`report.py`同口径评估。
 
-**2026-07-16 第二次更新（评估标准再收紧）**：负责人进一步明确了往后的评估口径
-——①t+1~t+4 不再合并看，**逐步分开报告，t+2 是重点参考步**，其余步骤仅作辅助；
-②**train 集和 test 集指标都要报**，只看 test 无法诊断过拟合。已按此标准给
-`archive-runs` 全部 8 轮、25 个 checkpoint 补了 train 集评估（新增
-`evaluation/eval_train_test.py`，见"全部模型/run 的结果一览"一节每个子节新增的
-t+2 train/test 表）。**结论层面这次复核没有推翻任何已定论**——各 run 在 t+2 上
-单独看和 t+1~t+4 聚合结论方向一致，train/test 差距普遍不大（第一个真正意义上的
-"过拟合"信号只在 fourth-run DMVFN 和 eighth-run A_softargmax_lr1e-6 这两个已经
-判负的 checkpoint 上出现，都是 train 和 test 一起崩，不是经典的"train 好 test
-差"模式）。副产品：过程中发现并修复了 `eighth-run/train/dataset.py` 和
-`compare_ablations.py` 里一个真实 bug——归档进 `archive-runs/` 后路径深度多了一层，
-`DATA_DIR`/`ACCESS_MODEL_DIR` 没跟着改，导致这两个脚本在归档后其实无法运行
-（历史 RESULTS.md 里的记录都是归档前留下的）。
+**结果（2026-07-20）：四个单变量正则化/容量调整，三个是空结果，一个（容量
+缩小）方向错误——这条排查路线目前没有找到能改善泛化的旋钮**：
 
-- **下一步优先级（2026-07-16 会话末尾定的顺序）**：
-  1. 延续C实验配方（chat+G1+G2训练、clip_len=20）——扩大训练组数量（比如加
-     G4/G5等）再验证G3那种跨组泛化收益是不是稳定的，不是偶然一次。
-  2. ~~给C的预测结果做一次可视化诊断，直接看输出有没有塌陷成固定点~~——
-     **部分已由 train 集评估回答**：C_g1g2_train_g3_test 在 train 集上 t+2
-     peak_dist/PSR（9.27/64.83%）清楚超过朴素基线（10.27/60.31%），不是塌陷到
-     保守预测的模式（塌陷会导致 train 上也逼近基线甚至更差，参照
-     A_softargmax_lr1e-6 的真实塌陷案例）。如果还想更彻底确认，仍可做一次
-     直接可视化（看输出热力图形状），但已不是最优先级。
-  3. loss监督目标（实验A，两次独立证据判负）和单独的窗口拉长（实验B，已不确定）
-     这两条不用再继续投入。
-  4. 如果第1点要做大规模验证（比如喂更多bag），**建议先排查下面的"早停/
-     checkpoint粒度太粗"这个老问题**——third/fifth/seventh-run都在数据变大后
-     早停点异常靠前，不解决这个，扩大数据规模很可能重演"epoch1就早停"。
-- **eighth-run 结论汇总（都已跑完，见 eighth-run 小节完整数字）**：
-  - 实验A（soft-argmax峰值位置loss，三个lr）：**负结果，独立于相关性也成立**——
-    peak_dist全面比朴素基线差，lr=1e-6出现PSR从51%崩到5.63%的塌陷，直接从训练
-    曲线看出来，不需要相关性佐证。
-  - 实验B（clip_len 10→20，chat-only）：peak_dist/PSR和clip_len=10基本打平，
-    **不确定/中性结果**，不是之前以为的"最佳结果"（那个判断当时靠的是相关性）。
-  - C follow-up（chat+G1+G2训练/G3 held-out测试，clip_len=20）：**目前最值得
-    延续的正向结果**——G3上peak_dist/PSR全面超过exp4和朴素基线，是项目里第一次
-    在真正没见过的WordWolfExp组上做到这点。之前怀疑的"塌陷"没有独立证据，已撤回。
-  - D（只预测+1s单一时间点）：**负结果**——和C联合4步预测切片几乎逐位相同，
-    证明"稀释近期精度"的假设不成立，瓶颈不在输出头分摊注意力上。
-  - **下一步最有希望的方向**：延续C的配方（chat+G1+G2训练、clip_len=20），
-    可能的路子——扩大训练组数量再验证G3这类正向结果是否稳定；对新模型的预测
-    做可视化诊断，直接确认有没有塌陷到固定点（弥补相关性指标弃用后留下的空白）；
-    重新评估eighth-run"换loss监督目标"这整个方向是否还有必要（premise已被削弱，
-    见下一条）。
-- **eighth-run 存在的原始前提需要重新评估**："七轮回顾发现位置相关性天花板，唯一
-  没变过的是loss监督对象"这个立项逻辑，本身是用现在已弃用的相关性指标定义的。
-  复核后 seventh-run 在peak_dist/PSR上其实基本追平旧模型（差距在噪声范围内），
-  "模型学不好WordWolfExp"这个问题可能被高估了。这不代表eighth-run没有产出——
-  C follow-up的正向结果依然成立且不依赖相关性——但"必须靠换loss监督目标才能
-  突破天花板"这个原始动机站不住了，往后的方向判断应该以peak_dist/PSR为准，不要
-  再默认存在一个"天花板"。
-- **配套评估提醒**：third-run 诊断表（本文件"补充诊断"一节）显示朴素基线自己的
-  相关性在不同场次是 0.10~0.35（这个具体数字现在仅供参考）——但背后的现象本身
-  还是成立的：**有些场次下一个说话人位置本来就不好预测，任何模型都难赢朴素基线**，
-  评估时最好按场次可预测性分层看，不要只看合并平均。
-- **早停/checkpoint 粒度问题（仍未验证，仍值得排查）**：third-run(epoch2早停)、
-  fifth-run(epoch3)、seventh-run(epoch1) 的最优点相对各自的 epoch 预算都异常靠前，
-  是同一个模式反复出现——现在的训练循环只在 epoch 边界评估/存 checkpoint，数据集
-  越大这个粒度越粗糙，可能一直错过 epoch 内部真正的最优时刻。值得做一次按 batch
-  数（而不是 epoch数）为单位的评估间隔实验，看早停点是不是能挪到更晚、指标是不是
-  能更好。
-- KL loss 条件下 `peak_mass` 在早停点之后仍在涨，但当前早停只看 test_loss——
-  "早停该监控哪个指标"这个问题还没有处理。
-- `Demonstration_Data_nonconv`（非对话片段）"加入训练是否有帮助"这个有对照消融
-  还没有做——fifth-run 已经把它混进了 278 个训练 bag 里，还没单独测过去掉它会不会
-  更好/更差。
-- **旧模型对比基线是否权威还有疑点**：`access-model-train/results/` 目录下还有
-  一个更新的 checkpoint `config_simvp_exp4_new_epoch31.pt`（比归档的 `exp4.pt`
-  更新，config 相同，代码里被注释掉没启用），一直没有确认过它是不是比现在用的
-  `exp4.pt` 更好/更该作为对比基线——目前所有"新旧模型对比"都用的是 `exp4.pt`。
-- `sm_ratio` 融合权重目前固定 0.5（像素级加权，不可学习），一直没有作为超参数
-  扫过，也没试过做成可学习的融合方式。
+| 场景 | Phase1基线 | reg_wd0.1 | reg_aug_strong | reg_capacity_2x2 | reg_drop0.4 |
+|---|---|---|---|---|---|
+| 总的 | 7.39/62.41% | 7.39/62.12%（持平） | 7.46/62.12%（噪声内） | **7.55/61.69%（超出噪声）** | 7.42/62.20%（噪声内） |
+| chat | 5.99/75.41% | 5.99/75.16%（持平） | 6.19/75.00%（噪声内） | **6.32/73.85%（超出噪声）** | 6.07/75.00%（噪声内） |
+| wordwolfexp | 9.14/67.93% | 9.15/68.39%（持平） | 9.14/68.34%（持平） | **9.30/68.12%（超出噪声）** | 9.15/68.12%（持平） |
+| grpmtg | 7.09/59.65% | 7.09/59.16%（持平） | 7.16/59.18%（噪声内） | **7.23/58.78%（接近边缘）** | 7.12/59.36%（噪声内） |
+
+- **weight_decay翻10倍（0.01→0.1）：完全空结果**，四个场景几乎和基线逐位
+  相同，这个旋钮对当前的过拟合现象没有任何可测的影响。
+- **noise_ratio增强力度明显加大：空结果**，四个场景都落在此前种子重跑
+  确认的噪声跨度内，没有清楚方向。
+- **dropout/drop_path翻倍（0.2→0.4）：空结果**，同样全部落在噪声内。
+- **容量缩小（N_S=N_T 4→2）：唯一一个四场景方向一致的信号，但方向是
+  变差不是变好**——总的/chat/wordwolfexp三项都超出了噪声跨度，grpmtg
+  接近边缘。**再次确认run-1 Phase3的旧结论（容量在这个范围内不是瓶颈）
+  在当前跨域大规模数据下依然成立，用户提出的"数据集不够大、模型太大"这个
+  假设没有得到支持**——缩容量不但没帮泛化，连带train拟合能力也一起降了，
+  是纯粹的双输。
+
+**综合结论**：过拟合探针证明的"容量够用、但泛化差距明显"这个现象，**用
+四个最常规的单变量正则化/容量调整都没能缓解**——不是"正则化力度不够"这么
+简单，问题可能出在别的地方（数据本身的域覆盖/多样性、架构设计、学习率
+调度，或者这就是当前配方在这个数据规模下的自然天花板，early stopping在
+epoch3~5附近截住已经是当前能做到的最优）。这条"调正则化旋钮"的路线目前
+看没有更多明显低垂果实，下一步更值得投入的方向是数据侧（157-bag
+held-out测试）或者更结构性的改动，而不是继续在这几个旋钮上微调。
+
+**157-bag held-out测试（2026-07-20/21，已完成）**：直接排查"Phase4加进来的157
+个新来源bag本身有没有泛化价值"这个一直悬着的开放问题。设计：从157个
+`OTHER_BAGS`里挑最大的单一来源**ATR_RIKEN_1F（49个bag）整体WHOLLY held
+out**，其余108个bag（`OTHER_TRAIN_BAGS_EX_ATR1F`，跨ATR_RIKEN_3f/olab/
+egoSAS/kitchen/Demonstration_Data等多个来源）可以加进训练池。`dataset.py`
+新增这两个常量+`make_datasets(atr1f_holdout=True)`，`train.py`加
+`--atr1f-holdout`开关（和`--use-full-pool`互斥），`report.py`加
+`--extra-eval-domain`参数，让任意checkpoint（不管训练时有没有见过这个域）
+都能用同一条eval路径去测ATR_RIKEN_1F，这样零shot基线和实际训练过的模型
+能公平对比。两个对照：
+- **Config A（零shot基线）**：直接复用已有的`phase1_chat_ww_mtg`
+  checkpoint（121-bag池，没见过任何OTHER_BAGS），测它在ATR_RIKEN_1F
+  （35,360个held-out窗口）上的zero-shot表现。
+- **Config B（已完成，见下）**：`atr1f_holdout_test`，121-bag池+108个other bag
+  （194,492训练窗口），同样在ATR_RIKEN_1F上评估——如果这108个bag真的带来
+  跨域泛化价值，应该比Config A明显更好。
+
+**Config A结果，出现了和chat/WordWolfExp/grpmtg完全相反的模式**：
+
+| 模型 | peak_dist | PSR |
+|---|---|---|
+| exp4 | **6.32**（最好） | **76.56%**（最好） |
+| Phase1本实验（零shot） | 7.65 | 70.70% |
+| 朴素基线 | 7.66 | 68.11% |
+
+在这个真正陌生的物理场景（ATR_RIKEN办公室）上，**exp4反而明显优于Phase1
+模型，Phase1模型只是勉强追平朴素基线**——和其它三个域"Phase1全面超过exp4"
+的模式完全相反。初步解读：Phase1模型可能对训练时见过的几个特定场景（chat/
+WordWolfExp/GRP_meeting的房间、机位）学得比较贴合，遇到真正没见过的物理
+空间时，泛化不如exp4（exp4的历史训练数据来源可能更广/更多样，具体没有
+查证）。这给Config B设了明确的对照标准：加上108个bag后，ATR_RIKEN_1F上的
+表现能不能从7.65/70.70%拉近甚至超过exp4的6.32/76.56%。
+
+**Config B结果（2026-07-21）：18个epoch，best epoch9（overall_pd_mean=
+7.50，和Phase1的7.41接近），chat/wordwolfexp/grpmtg三个老域数字正常
+（6.22/74.26%、9.12/68.21%、7.15/59.54%，都在Phase1~4历史范围内，没有
+异常）。但ATR_RIKEN_1F上的结果不是"没帮助"这么温和，而是明显更差，且
+呈现异常的发散模式**：
+
+| 模型 | t+1 | t+2 | t+3 | t+4 | 均值peak_dist | 均值PSR |
+|---|---|---|---|---|---|---|
+| exp4 | 5.86 | 6.32 | 6.50 | 6.59 | 6.32 | 76.56% |
+| 朴素基线 | 6.55 | 7.51 | 8.12 | 8.44 | 7.66 | 68.11% |
+| Config A（零shot，未见任何OTHER_BAGS） | 6.66 | 7.52 | 8.00 | 8.42 | 7.65 | 70.70% |
+| **Config B（本实验，训练含108个other bag）** | **7.91** | **13.71** | **17.37** | **18.75** | **14.43** | **38.12%** |
+
+**Config B从t+1开始就是四者中最差（7.91 vs exp4的5.86），而且随预测步长
+急剧发散**（t+1→t+4：7.91→18.75，PSR从68.48%崩到17.29%），和其它三者
+"温和线性增长"的模式（exp4/基线/Config A都是差不多斜率的缓慢上升）完全
+不同——**这不是"没有收益"，是训练进了108个bag之后在这个held-out域上明显
+变得更差，且预测在多步之后出现类似发散/不稳定的行为**。同一个checkpoint
+在chat/wordwolfexp/grpmtg上表现正常（说明不是权重损坏或eval代码bug——
+`report.py`的`atr1f`评估路径已经用Config A验证过是好的，同一条路径这次
+测出的异常应该是真实的模型行为，不是代码问题）。
+
+**初步解读**：108个bag里包含`ATR_RIKEN_3f`（同一建筑/机构的另一个楼层，
+和被held-out的`ATR_RIKEN_1F`很可能视觉上相近但不同）——推测模型可能学到
+了对3f这类"相近但不同"场景过拟合的特征，这些特征在1F上是"自信地错"，
+比完全没见过相关场景（Config A零shot）更具误导性，导致多步预测发散。
+如果这个推测成立，说明**"相近但不同"的域混进训练池，可能比"完全无关"的
+域更危险**——不是单纯"多样性不够"的问题，而是可能存在负迁移。
+
+**结论：157个新bag（至少这108个）不但没有验证出泛化价值，反而在这个
+held-out域上造成了明显更差、且模式异常的结果——这是本轮所有排查里最
+明确的负面证据**。如果以后还想再验证"新数据源有没有用"，应该避免把
+"同一场地/相近场景的不同子集"混在同一批判断里（比如单独测一下只有
+`egoSAS`/`kitchen`这类和已有域完全不相关的来源，而不是把`ATR_RIKEN_3f`
+这种和held-out目标高度相关的也放进去）。
+
+## run-2 收尾（2026-07-21）
+
+**负责人决定：run-2到此收尾，不再继续在"扩数据/调正则化/调容量"这条线上
+投入**。锁定配方 = `phase1_chat_ww_mtg`（见上"run-2结论摘要"）。
+
+**明确暂缓、不是遗忘**的后续方向（留档，以后重新立项时可参考，不是当前
+TODO）：
+1. 更细粒度地重测157-bag里"完全无关"的来源（如egoSAS/kitchen，排除
+   ATR_RIKEN_3f这类和held-out目标相近的子集），验证"近似域负迁移"这个
+   假设是否成立。
+2. domain-invariant特征学习/领域自适应/新环境少样本微调——如果以后目标
+   明确是"要对全新物理环境有泛化能力"，这类结构性不同的方法值得考虑，但
+   工程投入明显大于run-2已做的任何一次实验，需要单独立项评估。
+
+代码资产（供以后复用）：`overfit_probe.py`/`eval_overfit_checkpoint.py`
+（容量诊断）、`train.py`的`--drop`/`--drop-path`/`--aug-*`/
+`--atr1f-holdout`开关、`report.py`的`--extra-eval-domain`（任意checkpoint
+测任意域，不依赖训练配置）——都是这轮排查留下的通用工具，不是一次性脚本。
+
+详细计划/待选项见`archive-runs/old-runs-2/run-2/PLAN.md`"后续方向"一节
+（已同步标记收尾）。

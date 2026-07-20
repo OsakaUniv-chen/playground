@@ -1,0 +1,23 @@
+{
+  "clip_len": 10,
+  "pred_len": 4,
+  "sm_ratio": 0.5,
+  "ww_test_group": "G1",
+  "use_full_pool": false,
+  "simvp_type": "gsta",
+  "n_s": 4,
+  "n_t": 4,
+  "bs": 32,
+  "lr": 0.001,
+  "weight_decay": 0.01,
+  "augment": "noise_ratio",
+  "epochs": 200,
+  "plateau_patience": 3,
+  "lr_decay_factor": 0.5,
+  "max_decays": 3,
+  "min_lr": 1e-06,
+  "device": "cuda",
+  "run_name": "phase1_seed1337",
+  "num_workers": 4,
+  "seed": 1337
+}
