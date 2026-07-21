@@ -147,6 +147,82 @@ run-3一开始就要做的事——沿用项目一贯的单变量纪律，先把
 （`build_domain_pair()`新增`"expo"`/`"indy"`两个分支，仿照`"atr1f"`）——不是
 从零重写，是在已验证过的框架上加两个和`atr1f_holdout`同构的分支。
 
+## Phase 0 结果（2026-07-21，已完成）
+
+1. **补registry**：`DATA_REPORT.md`两张表已刷新（473 bag/450,110 ticks/62.52
+   小时）。`build_dataset.py`的`JOBS`列表**没有补**——这两批npz生成时间晚于
+   `build_dataset.py`最后一次修改，真实`root`源目录未经核实，这台机器上
+   `/media/chen/Extreme SSD/PSSPData/`当前未挂载，不确认路径就写`Job(...)`
+   条目风险比不写更大（会误导以后的人）。**需要负责人补充这两个来源的真实
+   PSSPData子目录路径**。
+2. **QC视频抽查**：**没做成**——`soundmap-videos/`在这台机器的工作目录里
+   不存在（历史上体积较大，大概率是本地生成产物，没有随仓库同步过来）。
+   目前完全没有渠道目视确认expo/indy的场景内容。见下"结果解读"，这一步
+   缺失现在看比预想更值得补上。
+3. **零成本zero-shot基线**：`dataset.py`新增`EXPO_*`/`INDY_*`常量+
+   `make_datasets()`的`expo_holdout`/`indy_holdout`开关（复核过：167→
+   155训练/12held-out，23→17训练/6held-out，两者held-out都是按日期整天
+   划分，和`atr1f_holdout`同构）；`report.py`的`build_domain_pair()`加了
+   `"expo"`/`"indy"`两个分支。用`phase1_chat_ww_mtg`（未见过任何expo/indy
+   数据）跑`--extra-eval-domain expo indy`，完整结果见`run-3/RESULTS.md`。
+   chat/wordwolfexp/grpmtg三个老域的数字和run-2原始记录逐位一致，确认代码
+   搬运/checkpoint加载没有引入偏差。
+
+### 结果解读：t+2（重点步），val/test（held-out day）列，peak_dist↓/PSR↑
+
+| 场景 | exp4 | 朴素基线 | phase1_chat_ww_mtg（zero-shot） |
+|---|---|---|---|
+| expo_reception_2025（held-out day 09-29） | 18.30 / 26.85% | **14.60 / 39.69%**（三者最好） | 15.43 / 38.69% |
+| indy_teleoperation（held-out day 04-09） | **11.35 / 57.00%**（peak_dist最好） | 11.43 / **58.00%**（PSR最好） | 11.52 / 53.24%（三者PSR最差） |
+
+**这是一个和ATR_RIKEN_1F Config A不同、但同样值得认真对待的信号：在这两个
+新域上，`phase1_chat_ww_mtg`都没能超过朴素基线**——不是"exp4更好"（ATR
+RIKEN_1F那次的模式），而是"什么模型都不如什么都不做"。expo上朴素基线明显
+领先两个真实模型（14.60 vs 15.43 vs 18.30，exp4最差），indy上三者非常接近
+（11.35~11.52，量级上接近历史噪声跨度），phase1模型在indy的PSR上明显落后
+（53.24% vs 其余两个的57~58%）。
+
+**含义**：Phase 1（训练时混入expo/indy）现在有了一个更高、更明确的及格线
+——不是简单"训练后有没有变好"，而是"训练后能不能第一次在这两个域上超过
+朴素基线"。目前两个真实模型都赢不了"什么都不做"，说明这两个域的动态可能
+和已验证域（chat/WordWolfExp/GRP_meeting对话式场景）有质的不同（expo是
+"接待"场景，猜测声源可能长时间停留在固定位置附近，朴素连续性因此是强先验；
+indy是"遥操作"场景，声学环境可能截然不同）。**在没有QC视频可看的情况下，
+这只是推测**——建议在投入Phase 1b（expo，预计约5小时GPU时间）之前，先找
+机会看几眼原始视频/录音，确认这个猜测，而不是直接假设"训练会带来提升"。
+
+## Phase 1a 结果（indy，2026-07-21，已完成，正向）
+
+`phase1a_indy`：121-bag基础池 + INDY_TRAIN_BAGS（17个bag）混入训练，其余配方
+原样沿用锁定配方（未传任何额外CLI参数，全部用默认值=Phase1原配方）。17个
+epoch，每epoch约601秒（约10分钟），总耗时约170分钟，early stopping在epoch17
+触发（best在epoch3，overall_pd_mean=7.4911，和Phase1原始的7.41几乎一致）。
+
+**indy held-out天（04-09）结果，t+2均值口径，peak_dist↓/PSR↑**：
+
+| | zero-shot（Phase 0，未见过indy） | 训练后（phase1a_indy） | exp4 | 朴素基线 |
+|---|---|---|---|---|
+| indy held-out (04-09) | 11.93 / 51.37%（三者最差） | **9.30** / — | 11.58 | 11.65 |
+
+**清楚的正向结果**——从"三者最差、不如朴素基线"（zero-shot）变成"明确超过
+exp4和朴素基线"（9.30 vs 11.58 vs 11.65），降幅约2.3，量级上和WordWolfExp
+Phase1当年的突破（9.14 vs exp4 12.23 vs 基线11.31）相当。**说明zero-shot
+时indy"打平朴素基线"不是"这个域学不到东西"，只是"模型从没见过这类数据"
+——给17个bag就足够学出明显超过基线的能力，在真正没见过的那一天上验证过。**
+
+**对三个已验证老域的影响：在此前噪声跨度内，没有可辨识的拖累**——chat
+5.99→6.14（Δ0.15，小于三seed跨度0.26）、wordwolfexp 9.14→9.16（Δ0.02，小于
+三seed跨度0.05）、grpmtg 7.09→7.17（Δ0.08，小于三seed跨度0.19）。indy这块
+新增数据没有重演157-bag测试的负迁移模式。
+
+**对expo zero-shot的影响（附带检查，这次训练没碰expo）**：exp4/朴素基线
+不变（after all没在训练里出现过），但phase1家族模型自己在expo上的zero-shot
+从15.42变成16.68（更差，Δ1.26）——比其余三个老域的偏移都大，暂时没有
+多seed噪声参照，不确定是否有意义，留意但不下结论，Phase 1b/2再看会不会
+稳定复现。
+
+**结论：indy正向，且没有反证。按计划推进到Phase 1b（expo）。**
+
 ## 环境提醒（继承自run-1/run-2，未变）
 
 `workon train`（Python 3.10 + torch 2.7.1+cu118，这台机器GPU驱动较旧锁定在这个
