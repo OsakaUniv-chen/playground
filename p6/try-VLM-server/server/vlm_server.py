@@ -93,15 +93,27 @@ class QwenBackend:
                  min_pixels=0, max_pixels=0, **_):
         import torch
         from PIL import Image
-        from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+        from transformers import (Qwen2_5_VLForConditionalGeneration, AutoProcessor,
+                                  AutoConfig)
         self._Image = Image
         self._torch = torch
         self.max_new_tokens = max_new_tokens
         print("[qwen] loading %s ..." % model, flush=True)
         print("[qwen] 首次会下载权重(32B-AWQ ~20GB), 加载约 1-2 分钟", flush=True)
         t0 = time.perf_counter()
+        # AWQ 的 CUDA GEMM 内核只支持 float16(不支持 bfloat16); 非量化模型用其原生 dtype。
+        dtype = torch.float16 if "awq" in model.lower() else "auto"
+        cfg = AutoConfig.from_pretrained(model)
+        # 这个 checkpoint 的 lm_head 其实没量化(存的是 fp16 lm_head.weight), 但其 config 的
+        # modules_to_not_convert 漏了 lm_head, 导致 transformers 误把它转成 WQLinear、丢弃真权重。
+        # 补上 lm_head, 让它保持普通 fp16 Linear。
+        qc = getattr(cfg, "quantization_config", None)
+        if isinstance(qc, dict):
+            m2nc = list(qc.get("modules_to_not_convert") or [])
+            if "lm_head" not in m2nc:
+                qc["modules_to_not_convert"] = m2nc + ["lm_head"]
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            model, torch_dtype="auto", device_map="auto")
+            model, config=cfg, torch_dtype=dtype, device_map="auto")
         # min/max_pixels 限制每张图的 visual token 数(pixels = tokens*28*28), 防 OOM 并加速
         proc_kwargs = {}
         if min_pixels:
@@ -166,6 +178,8 @@ def serve(args):
                 try:
                     result = backend.infer(prompt, image)
                 except Exception as e:  # 单帧推理失败不拖垮 server
+                    import traceback
+                    traceback.print_exc()
                     result = "[error] %s" % e
                 dt = (time.perf_counter() - t0) * 1000.0
                 print("[server] infer %.1fms -> %s" % (dt, result[:80]), flush=True)

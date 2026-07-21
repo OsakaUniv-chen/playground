@@ -1,0 +1,180 @@
+建立 SSH 端口转发 50017 -> 3090:50007 ...
+已连接, 评测 160 张 (JPEG q70)
+
+OK 000  gt=Right        pred=Right         5635ms
+OK 001  gt=Right        pred=Right         5538ms
+OK 002  gt=Left         pred=Left          5493ms
+OK 003  gt=Teleoperator pred=Teleoperator  5581ms
+   004  gt=Others       pred=Teleoperator  7350ms
+   005  gt=Others       pred=Teleoperator  7672ms
+   006  gt=Others       pred=Teleoperator  8073ms
+OK 007  gt=Teleoperator pred=Teleoperator  5643ms
+   008  gt=Others       pred=Left          5792ms
+OK 009  gt=Teleoperator pred=Teleoperator  7767ms
+OK 010  gt=Right        pred=Right         6881ms
+   011  gt=Others       pred=Teleoperator  6761ms
+OK 012  gt=Right        pred=Right         5845ms
+OK 013  gt=Right        pred=Right         6962ms
+OK 014  gt=Teleoperator pred=Teleoperator  7772ms
+OK 015  gt=Teleoperator pred=Teleoperator  8369ms
+   016  gt=Others       pred=Teleoperator  6761ms
+OK 017  gt=Teleoperator pred=Teleoperator  7751ms
+OK 018  gt=Left         pred=Left          7569ms
+OK 019  gt=Left         pred=Left          6949ms
+OK 020  gt=Right        pred=Right         5708ms
+OK 021  gt=Left         pred=Left          5069ms
+   022  gt=Others       pred=Teleoperator  7598ms
+OK 023  gt=Left         pred=Left          7665ms
+OK 024  gt=Right        pred=Right         5858ms
+OK 025  gt=Teleoperator pred=Teleoperator  5677ms
+OK 026  gt=Right        pred=Right         5538ms
+OK 027  gt=Right        pred=Right         5898ms
+   028  gt=Others       pred=Left          7557ms
+OK 029  gt=Right        pred=Right         5604ms
+OK 030  gt=Left         pred=Left          7531ms
+OK 031  gt=Left         pred=Left          6835ms
+   032  gt=Others       pred=Teleoperator  7233ms
+   033  gt=Others       pred=Right         6912ms
+OK 034  gt=Left         pred=Left          5130ms
+OK 035  gt=Right        pred=Right         5583ms
+   036  gt=Others       pred=Teleoperator  7997ms
+OK 037  gt=Right        pred=Right         5691ms
+OK 038  gt=Teleoperator pred=Teleoperator  7971ms
+OK 039  gt=Left         pred=Left          5534ms
+   040  gt=Others       pred=Teleoperator  7438ms
+OK 041  gt=Teleoperator pred=Teleoperator  7664ms
+OK 042  gt=Teleoperator pred=Teleoperator  6534ms
+OK 043  gt=Left         pred=Left          6544ms
+   044  gt=Others       pred=Teleoperator  7562ms
+OK 045  gt=Right        pred=Right         7461ms
+   046  gt=Left         pred=Teleoperator  7538ms
+   047  gt=Others       pred=Left          6041ms
+   048  gt=Others       pred=Teleoperator  7353ms
+OK 049  gt=Teleoperator pred=Teleoperator  7885ms
+OK 050  gt=Teleoperator pred=Teleoperator  5693ms
+OK 051  gt=Left         pred=Left          7076ms
+   052  gt=Left         pred=Teleoperator  7313ms
+OK 053  gt=Right        pred=Right         6905ms
+OK 054  gt=Teleoperator pred=Teleoperator  7726ms
+OK 055  gt=Left         pred=Left          6651ms
+   056  gt=Right        pred=Teleoperator  7767ms
+OK 057  gt=Left         pred=Left          6846ms
+OK 058  gt=Teleoperator pred=Teleoperator  7449ms
+OK 059  gt=Teleoperator pred=Teleoperator  7714ms
+   060  gt=Right        pred=Teleoperator  7650ms
+OK 061  gt=Teleoperator pred=Teleoperator  7964ms
+   062  gt=Right        pred=Teleoperator  6763ms
+OK 063  gt=Right        pred=Right         5854ms
+OK 064  gt=Teleoperator pred=Teleoperator  7891ms
+OK 065  gt=Right        pred=Right         7135ms
+OK 066  gt=Teleoperator pred=Teleoperator  6025ms
+OK 067  gt=Teleoperator pred=Teleoperator  7477ms
+OK 068  gt=Teleoperator pred=Teleoperator  7495ms
+   069  gt=Others       pred=Teleoperator  7426ms
+OK 070  gt=Teleoperator pred=Teleoperator  7501ms
+OK 071  gt=Right        pred=Right         6993ms
+OK 072  gt=Teleoperator pred=Teleoperator  7582ms
+OK 073  gt=Left         pred=Left          7583ms
+OK 074  gt=Teleoperator pred=Teleoperator  7438ms
+OK 075  gt=Left         pred=Left          6823ms
+OK 076  gt=Teleoperator pred=Teleoperator  7477ms
+   077  gt=Others       pred=Left          5924ms
+OK 078  gt=Teleoperator pred=Teleoperator  8083ms
+OK 079  gt=Right        pred=Right         5123ms
+OK 080  gt=Teleoperator pred=Teleoperator  7630ms
+   081  gt=Right        pred=Teleoperator  7768ms
+OK 082  gt=Right        pred=Right         5925ms
+OK 083  gt=Right        pred=Right         5879ms
+OK 084  gt=Left         pred=Left          5589ms
+OK 085  gt=Right        pred=Right         5890ms
+OK 086  gt=Right        pred=Right         5727ms
+OK 087  gt=Left         pred=Left          5542ms
+OK 088  gt=Teleoperator pred=Teleoperator  7524ms
+   089  gt=Others       pred=Teleoperator  7460ms
+   090  gt=Others       pred=Left          5619ms
+   091  gt=Others       pred=Teleoperator  7924ms
+   092  gt=Others       pred=Left          7714ms
+OK 093  gt=Teleoperator pred=Teleoperator  7866ms
+OK 094  gt=Left         pred=Left          5729ms
+OK 095  gt=Right        pred=Right         5711ms
+OK 096  gt=Right        pred=Right         5130ms
+OK 097  gt=Right        pred=Right         5825ms
+OK 098  gt=Right        pred=Right         7016ms
+OK 099  gt=Left         pred=Left          5618ms
+   100  gt=Others       pred=Teleoperator  5086ms
+OK 101  gt=Left         pred=Left          6368ms
+   102  gt=Others       pred=Left          5869ms
+OK 103  gt=Right        pred=Right         5859ms
+   104  gt=Others       pred=Right         5557ms
+OK 105  gt=Right        pred=Right         5974ms
+   106  gt=Others       pred=Teleoperator  6551ms
+OK 107  gt=Teleoperator pred=Teleoperator  7818ms
+OK 108  gt=Right        pred=Right         5893ms
+   109  gt=Others       pred=Left          6804ms
+OK 110  gt=Teleoperator pred=Teleoperator  7828ms
+OK 111  gt=Teleoperator pred=Teleoperator  7820ms
+   112  gt=Others       pred=Right         6814ms
+OK 113  gt=Right        pred=Right         5935ms
+OK 114  gt=Left         pred=Left          6836ms
+   115  gt=Others       pred=Teleoperator  7833ms
+OK 116  gt=Left         pred=Left          5311ms
+OK 117  gt=Right        pred=Right         5888ms
+OK 118  gt=Left         pred=Left          5888ms
+   119  gt=Others       pred=Teleoperator  7373ms
+OK 120  gt=Right        pred=Right         5863ms
+OK 121  gt=Left         pred=Left          6917ms
+OK 122  gt=Left         pred=Left          7642ms
+   123  gt=Others       pred=Right         5910ms
+OK 124  gt=Teleoperator pred=Teleoperator  8279ms
+OK 125  gt=Left         pred=Left          5611ms
+OK 126  gt=Left         pred=Left          6847ms
+   127  gt=Others       pred=Teleoperator  8069ms
+   128  gt=Others       pred=Teleoperator  6130ms
+   129  gt=Others       pred=Teleoperator  7679ms
+OK 130  gt=Teleoperator pred=Teleoperator  7726ms
+OK 131  gt=Right        pred=Right         6460ms
+   132  gt=Others       pred=Teleoperator  7670ms
+   133  gt=Right        pred=Teleoperator  6186ms
+OK 134  gt=Left         pred=Left          7195ms
+OK 135  gt=Left         pred=Left          6841ms
+OK 136  gt=Left         pred=Left          5920ms
+OK 137  gt=Teleoperator pred=Teleoperator  5642ms
+   138  gt=Others       pred=Teleoperator  8026ms
+   139  gt=Others       pred=Right         6550ms
+   140  gt=Others       pred=Right         5541ms
+OK 141  gt=Teleoperator pred=Teleoperator  5826ms
+   142  gt=Others       pred=Right         5582ms
+OK 143  gt=Teleoperator pred=Teleoperator  7966ms
+OK 144  gt=Right        pred=Right         7766ms
+OK 145  gt=Teleoperator pred=Teleoperator  5719ms
+OK 146  gt=Right        pred=Right         6866ms
+OK 147  gt=Left         pred=Left          6511ms
+OK 148  gt=Left         pred=Left          5641ms
+OK 149  gt=Teleoperator pred=Teleoperator  7542ms
+   150  gt=Others       pred=Right         5616ms
+OK 151  gt=Left         pred=Left          5545ms
+   152  gt=Left         pred=Teleoperator  7838ms
+OK 153  gt=Left         pred=Left          5608ms
+   154  gt=Left         pred=Teleoperator  8074ms
+   155  gt=Others       pred=Teleoperator  7970ms
+OK 156  gt=Left         pred=Left          6846ms
+OK 157  gt=Teleoperator pred=Teleoperator  7866ms
+   158  gt=Left         pred=Teleoperator  7870ms
+OK 159  gt=Teleoperator pred=Teleoperator  7599ms
+
+================ 结果 ================
+4 分类准确率: 110/160 = 68.8%   (未解析 0)
+随机基线 = 25%;  平均延迟 6759ms/张
+
+预测分布(看是否塌缩):
+  Left         43
+  Right        43
+  Teleoperator 74
+  Others       0
+
+混淆矩阵 (行=gt, 列=pred):
+               Left   Right  Teleop Others
+  Left         35     0      5      0     
+  Right        0      35     5      0     
+  Teleoperator 0      0      40     0     
+  Others       8      8      24     0     
