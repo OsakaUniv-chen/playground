@@ -38,4 +38,9 @@
 `train-data/` 里的文件名：WordWolfExp 用 `{bag}.npz`（如 `G1_game4_PSSP.npz`），
 其余所有数据集用 `{数据集名}_{bag}.npz`（如 `GRP_meeting_2025-01-16-13_08_04.npz`）。
 `index.csv` 的 `group` 列对应上表的数据集名（WordWolfExp 例外，`group` 是 G 编号
-1~13）。`soundmap-videos/` 下是每个 bag 对应的一份 mp4，文件名和 npz 同名。
+1~13）。`soundmap-videos/` 下的目录结构**镜像 PSSPData 源盘的层级**，每个 bag 一份 mp4，
+文件名和 npz 同名，例如 `soundmap-videos/Meeting/GRP_meeting/GRP_meeting_2025-01-16-13_08_04.mp4`、
+`soundmap-videos/ATR_teleoperation/data_RIKEN_1F/<bag>.mp4`。WordWolfExp/Experiment_EXP/
+Testrun0420 共用同一 `job.root`，故都落在 `WordWolfExp/` 一个文件夹里，与源盘一致。
+`train-data/` 里的 npz 仍是扁平的，只有视频按源盘树分文件夹。`build_dataset.py`
+新生成的视频也遵循此规则（`video_path_for()` / `_rel_under_source()`）。

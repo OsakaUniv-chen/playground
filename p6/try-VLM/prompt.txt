@@ -1,0 +1,3 @@
+This image is a fisheye camera view of a room with a sound-energy heatmap overlaid (jet colormap: blue = quiet, red = loudest). Two people sit on the left and right; the lower-centre region (over the table) is where a remote teleoperator's voice appears.
+
+Where is the sound coming from right now — the left person, the right person, the teleoperator (lower-centre), or nowhere clear? Explain what you see in the heatmap, then give a one-word answer.

@@ -19,7 +19,11 @@ For every bag, walks a fixed TICK-second output grid and for each tick:
 Two outputs per bag:
   - train-data/<name>.npz or train-data-aux/<name>.npz: soundmap (N,SM,SM)
     float32, gray_camimg (N,SM,SM) uint8, tick_ts (N,) int64.
-  - soundmap-videos/<name>.mp4 (flat, not split by pool): the
+  - soundmap-videos/<mirror of PSSPData tree>/<name>.mp4 (the videos mirror
+    the source directory layout, e.g. soundmap-videos/Meeting/GRP_meeting/
+    GRP_meeting_<bag>.mp4 and soundmap-videos/ATR_teleoperation/data_RIKEN_1F/
+    <bag>.mp4; the npz files in train-data/ stay flat -- only the videos are
+    foldered): the
     exp(x-max)-normalized soundmap overlaid on the full-color camera frame
     (yellow "sm_to_color" map, same recipe as
     Playground/video-generator/bag2video.py), PLUS -- matching that same
@@ -94,6 +98,10 @@ VIDEO_SUBTICKS = round(TICK / VIDEO_TICK)
 assert abs(TICK / VIDEO_TICK - VIDEO_SUBTICKS) < 1e-9, "TICK must be an exact multiple of VIDEO_TICK"
 
 PSSPDATA_ROOT = Path("/media/chen/Extreme SSD/PSSPData")
+# Second, larger source disk. New (2026-07) large collections landed here
+# instead of the Extreme SSD -- Job.root is an absolute path so jobs can point
+# at either disk transparently.
+PSSPDATA_ROOT_12T = Path("/media/chen/Disk_12T/PSSPData")
 
 TRAIN_PSSP_ROOT = _HERE.parent
 TRAIN_DATA_DIR = TRAIN_PSSP_ROOT / "train-data"
@@ -151,6 +159,21 @@ JOBS: list[Job] = [
     Job("kitchen", PSSPDATA_ROOT / "egoSAS_demo_data" / "kitchen", "train-data", "prefixed"),
     Job("ATR_RIKEN_1F", PSSPDATA_ROOT / "ATR_teleoperation" / "data_RIKEN_1F", "train-data", "prefixed"),
     Job("ATR_RIKEN_3f", PSSPDATA_ROOT / "ATR_teleoperation" / "data_RIKEN_3f", "train-data", "prefixed"),
+    # 2026-07 additions on the 12T disk. Both are Tobii-glasses-style
+    # recordings: 16ch /audio/audio_raw (AudioDataStamped) + /camera/image_raw/
+    # compressed, but NO /head/head_box or /room2_audio/vad -> QC videos get
+    # the universal VAD-only strip (no 4-label bars), same as GRP_meeting.
+    # expo_reception_2025 is large (167 bags, ~2TB); its dir name has parens +
+    # a fullwidth zero, which Path handles fine. indy_teleoperation also has a
+    # non-bag `processed_data/` subdir -- discover_bags() skips dirs without a
+    # *.db3, so it's excluded automatically. camera_flip left False for both;
+    # verify orientation on the first QC video and flip the flag if upside-down.
+    Job("expo_reception_2025",
+        PSSPDATA_ROOT_12T / "expo_reception_2025(video, sound map, gaze, action≈０)",
+        "train-data", "prefixed"),
+    Job("indy_teleoperation",
+        PSSPDATA_ROOT_12T / "indy_teleoperation(video, sound map, gaze, action)",
+        "train-data", "prefixed"),
 ]
 JOBS_BY_LABEL = {j.label: j for j in JOBS}
 
@@ -178,6 +201,8 @@ def discover_bags(job: Job) -> list[tuple[Path, dict | None]]:
             continue
         if job.only_bags is not None and d.name not in job.only_bags:
             continue
+        if not any(d.glob("*.db3")):
+            continue  # skip non-bag subdirs (e.g. a dataset's processed_data/)
         out.append((d, None))
     return out
 
@@ -187,6 +212,31 @@ def out_name_for(job: Job, bag_dir: Path) -> str:
         return bag_dir.name
     prefix = job.npz_prefix or job.label
     return f"{prefix}_{bag_dir.name}"
+
+
+SOURCE_ROOTS = (PSSPDATA_ROOT, PSSPDATA_ROOT_12T)
+
+
+def _rel_under_source(p: Path) -> Path:
+    """`p` relative to whichever PSSPData source disk contains it -- used to
+    mirror the source tree under soundmap-videos/."""
+    for r in SOURCE_ROOTS:
+        try:
+            return p.relative_to(r)
+        except ValueError:
+            continue
+    return Path(p.name)
+
+
+def video_path_for(job: Job, out_name: str) -> Path:
+    """QC videos mirror the PSSPData source directory tree, e.g.
+    soundmap-videos/Meeting/GRP_meeting/GRP_meeting_<bag>.mp4 and
+    soundmap-videos/ATR_teleoperation/data_RIKEN_1F/<bag>.mp4. The folder is
+    the bag's collection dir (job.root) relative to its source disk, so
+    WordWolfExp/Experiment_EXP/Testrun0420 (same job.root) all land in one
+    WordWolfExp/ folder, matching the source layout. The npz files in
+    train-data/ stay flat -- only the videos are foldered by scene."""
+    return VIDEO_ROOT / _rel_under_source(job.root) / f"{out_name}.mp4"
 
 
 def group_game_mode(job: Job, bag_dir: Path, info: dict | None):
@@ -569,7 +619,7 @@ def process_job(job: Job, generator: SoundMapGenerator, force: bool = False, lim
     for bag_dir, info in bags:
         out_name = out_name_for(job, bag_dir)
         npz_path = out_dir / f"{out_name}.npz"
-        video_path = VIDEO_ROOT / f"{out_name}.mp4"
+        video_path = video_path_for(job, out_name)
         if force or not npz_path.exists():
             todo_full.append((bag_dir, info, out_name))
         elif not video_path.exists():
@@ -582,7 +632,8 @@ def process_job(job: Job, generator: SoundMapGenerator, force: bool = False, lim
 
     for bag_dir, info, out_name in todo_full:
         t0 = time.time()
-        video_path = VIDEO_ROOT / f"{out_name}.mp4"
+        video_path = video_path_for(job, out_name)
+        video_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             data = extract_bag(bag_dir, generator, camera_flip=job.camera_flip, video_path=video_path)
             save_npz(data, out_dir / f"{out_name}.npz")
@@ -637,8 +688,8 @@ def _run_one_video_only(job_label: str, bag_name: str) -> None:
     bag_dir = job.root / bag_name
     out_name = out_name_for(job, bag_dir)
     npz_path = out_dir / f"{out_name}.npz"
-    video_path = VIDEO_ROOT / f"{out_name}.mp4"
-    VIDEO_ROOT.mkdir(parents=True, exist_ok=True)
+    video_path = video_path_for(job, out_name)
+    video_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         render_video_only(bag_dir, npz_path, video_path, camera_flip=job.camera_flip)
     except Exception:

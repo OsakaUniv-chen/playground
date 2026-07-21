@@ -1,0 +1,23 @@
+# ============================================================================
+# 远程 3090PC (驱动 470 / CUDA 11.4) 上已验证可用的 VLM 依赖。
+# 环境: ~/.virtualenvs/vlm  (基于 anaconda Python 3.10, 用 `workon vlm` 进入)
+#
+# 关键约束: 驱动 470 只支持到 CUDA 11.x, 所以 torch 必须用 cu118 构建
+#          (CUDA 12 的 torch 跑不起来)。transformers 必须 <5 (5.x 需要更新的
+#          torch 的 DTensor API), 且 >=4.49 才有 Qwen2.5-VL。
+#
+# echo 后端只需要 Pillow。以下为 qwen 后端(默认 Qwen2.5-VL-32B-Instruct-AWQ)。
+# ============================================================================
+
+# 1) 先装 torch (cu118 专用 index):
+#    pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cu118
+
+# 2) 再装其余(普通 index):
+Pillow
+accelerate==1.14.0
+qwen-vl-utils
+autoawq==0.2.9            # 加载 AWQ 4bit 量化权重; 已 deprecated 但可用
+transformers==4.51.3     # 必须钉住: <5 且 >=4.49, 与 torch 2.4.1 兼容
+
+# 已验证: torch 2.4.1+cu118 (cuda available=True, RTX 3090), transformers 4.51.3,
+#         Qwen2_5_VLForConditionalGeneration 可导入, autoawq 0.2.9 可导入。

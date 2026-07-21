@@ -1,0 +1,7 @@
+# experiment artifacts -- keep code + small manifests in git, not heavy outputs
+images/
+images_synth/
+qc_contact_sheet.png
+results/
+*.png
+__pycache__/

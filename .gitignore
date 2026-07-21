@@ -22,3 +22,9 @@ __pycache__/
 
 # PSSP: training run outputs (checkpoints/logs/plots), regenerable by rerunning
 train-pssp/*-run/train/runs/
+
+# P6 VLM probe images (input soundmaps / QC / result plots) — large, regeneratable
+# from raw data; keep the probe code + manifest, not the images.
+p6/try-VLM/**/*.png
+p6/try-VLM/**/*.jpg
+p6/try-VLM/**/*.jpeg
