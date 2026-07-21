@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nvidia-smi --query-gpu=name,memory.total,memory.used,driver_version --format=csv)",
+      "Bash(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)",
+      "Bash(grep -E '`run-2/|run-2/[A-Za-z]')"
+    ]
+  }
+}

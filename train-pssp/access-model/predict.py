@@ -41,7 +41,21 @@ CHANNEL_COUNT = 2  # soundmap(1ch) + gray_camimg(1ch)
 
 # Only exp4 (sm_ratio=0.5) was kept -- exp1~3 (sm_ratio 1.0/0.9/0.7, same
 # architecture/data otherwise) were an ablation sweep and aren't needed here.
-EXP_NAMES = ("simvp_exp4",)
+# simvp_exp4_new: a newer checkpoint found alongside exp4's at
+# /home/chen/Documents/R4/results/ (config_simvp_exp4_new.pt) -- same
+# architecture/sm_ratio (per its json config), different training exp_name
+# selection/lr. Never confirmed better/worse than exp4 as the reference
+# baseline (open question in archive-runs/old-runs-1/CONTEXT.md). run-1
+# tried loading it under the same preprocessing convention as exp4
+# (exp-transformed target, sm_ratio=0.5 input blend -- independently
+# confirmed correct for exp4 by matching historical numbers exactly) and got
+# degenerate output (peak_dist ~46/64, PSR 0%) despite the weights
+# themselves looking legitimately trained (no NaN/Inf, normal-scale stats) --
+# likely its TRUE preprocessing convention differs from exp4's and was never
+# independently verified. Parked (owner decision 2026-07-18, see CONTEXT.md
+# open questions) -- still registered here for whenever someone wants to dig
+# in, just not used as a default comparison baseline for now.
+EXP_NAMES = ("simvp_exp4", "simvp_exp4_new")
 
 
 def load_config(exp_name: str) -> dict:
