@@ -114,6 +114,17 @@ class QwenBackend:
                 qc["modules_to_not_convert"] = m2nc + ["lm_head"]
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model, config=cfg, torch_dtype=dtype, device_map="auto")
+        # 非量化模块(如上面保留的 fp16 lm_head)会按 checkpoint 原生 bf16 载入,
+        # torch_dtype=float16 不会强制转它; 与 AWQ 层输出的 fp16 hidden states 在末端
+        # matmul 冲突 -> "expected scalar type Half but found BFloat16"。
+        # 用 AWQ(fp16) 时统一把残留的 bf16 浮点权重/buffer 拍成 fp16。
+        if dtype is torch.float16:
+            for p in self.model.parameters():
+                if p.dtype is torch.bfloat16:
+                    p.data = p.data.to(torch.float16)
+            for b in self.model.buffers():
+                if b.dtype is torch.bfloat16:
+                    b.data = b.data.to(torch.float16)
         # min/max_pixels 限制每张图的 visual token 数(pixels = tokens*28*28), 防 OOM 并加速
         proc_kwargs = {}
         if min_pixels:
