@@ -19,8 +19,8 @@ Others)のどれが今の音源かを当てさせる。主眼は **重畳の α(
 # 0) サンプル再生成(α 別オーバーレイ -> sample/manifest.csv)。bag アクセスが要る。
 /home/chen/.virtualenvs/wolf/bin/python sample/gen_samples.py
 
-# 1) 3090 で server 起動(共有 server)
-#    python ../server/vlm_server.py --backend qwen --max-pixels 602112
+# 1) 3090 で server 起動(共有 server。既定で qwen=32B-AWQ, max-pixels 602112)
+#    python ../server/vlm_server.py            # 配線確認だけなら --backend echo
 
 # 2) 単発確認
 /home/chen/.virtualenvs/wolf/bin/python client.py --sample sample_06 --alpha 0.6 --show-prompt

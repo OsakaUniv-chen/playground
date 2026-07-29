@@ -21,10 +21,11 @@ local 端通过 SSH 端口转发连到这个端口(见 ../local/vlm_client.py), 
 
 用法
 ----
-  # 先用 echo 验证链路
+  # 默认直接跑真模型(qwen: Qwen2.5-VL-32B-Instruct-AWQ 4bit, 24GB 显存,
+  # max-pixels 602112, 加载 ~1-2 分钟)
+  python3 vlm_server.py
+  # 只验证"部署 + 网络"链路(不加载模型)时用 echo:
   python3 vlm_server.py --backend echo
-  # 换真模型(默认 Qwen2.5-VL-32B-Instruct-AWQ 4bit, 24GB 显存, 加载 ~1-2 分钟)
-  python3 vlm_server.py --backend qwen --max-pixels 602112
 """
 
 import argparse
@@ -204,13 +205,13 @@ def main():
     ap = argparse.ArgumentParser(description="VLM server (远程 3090)")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=50007)
-    ap.add_argument("--backend", choices=["echo", "qwen"], default="echo")
+    ap.add_argument("--backend", choices=["echo", "qwen"], default="qwen")
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--max-new-tokens", type=int, default=64)
     ap.add_argument("--min-pixels", type=int, default=0,
                     help="每图最小 visual token 像素数(0=不限)")
-    ap.add_argument("--max-pixels", type=int, default=0,
-                    help="每图最大 visual token 像素数, 如 602112(=768*784)(0=不限)")
+    ap.add_argument("--max-pixels", type=int, default=602112,
+                    help="每图最大 visual token 像素数(默认 602112=768*784; 0=不限)")
     args = ap.parse_args()
     try:
         serve(args)

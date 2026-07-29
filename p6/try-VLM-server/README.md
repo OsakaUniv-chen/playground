@@ -42,9 +42,9 @@ SSH `-L` で転送。密码は `RIKEN_GRP_PASS` / `PC3090_CHEN_PASS` で上書�
 /home/chen/.virtualenvs/wolf/bin/python mode_A/sample/gen_samples.py
 /home/chen/.virtualenvs/wolf/bin/python mode_B/sample/gen_samples.py
 
-# 1) 遠隔 3090 で server 起動(echo で配線確認 / qwen で本番)
-python server/vlm_server.py --backend echo
-# python server/vlm_server.py --backend qwen --max-pixels 602112   # 32B-AWQ, ~20GB, 1-2分
+# 1) 遠隔 3090 で server 起動。既定で qwen(32B-AWQ, ~20GB, max-pixels 602112, 1-2分)
+python server/vlm_server.py
+# 配線確認だけなら(モデル非ロード): python server/vlm_server.py --backend echo
 
 # 2) 本機で評測(自動で隧道を張る)
 /home/chen/.virtualenvs/wolf/bin/python mode_A/eval.py    # 9 枚 x 5 形式

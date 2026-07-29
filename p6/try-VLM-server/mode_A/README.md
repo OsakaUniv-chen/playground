@@ -35,8 +35,8 @@ mode_B と足場を共有し、違うのは音源情報の一行だけ = テキ�
 # 0) サンプル再生成(プレーン RGB + ピーク -> sample/manifest.csv)。bag へのアクセスが要る。
 /home/chen/.virtualenvs/wolf/bin/python sample/gen_samples.py
 
-# 1) 3090 で server 起動(共有 server。echo で配線確認 / qwen で本番)
-#    python ../server/vlm_server.py --backend qwen --max-pixels 602112
+# 1) 3090 で server 起動(共有 server。既定で qwen=32B-AWQ, max-pixels 602112)
+#    python ../server/vlm_server.py            # 配線確認だけなら --backend echo
 
 # 2) 単発確認
 /home/chen/.virtualenvs/wolf/bin/python client.py --sample sample_06 --format coord --show-prompt
