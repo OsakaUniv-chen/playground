@@ -1,0 +1,10 @@
+sample_id,bag,tick_ts,gt_label,vad_active
+sample_01,G5_game4_Tele,1781662132827566976,Right,0
+sample_05,G8_game4_Random,1781748365686067456,Teleoperator,1
+sample_06,G11_game6_PSSP,1781834684027772800,Right,0
+sample_07,G11_game3_Random,1781832756021132416,Left,0
+sample_08,G11_game3_Random,1781832855271132416,Left,0
+sample_11,G13_game5_PSSP,1781853588300958080,Others,0
+sample_12,G13_game5_PSSP,1781853614550958080,Teleoperator,1
+sample_14,G6_game5_PSSP,1781668884491057280,Left,1
+sample_16,G10_game4_Tele,1781767394974140416,Right,0

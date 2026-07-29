@@ -1,51 +1,63 @@
 # try-VLM-server
 
-把 VLM 放到远程 3090PC 上跑, 本机(local)实时把 word-wolf 音图发过去、拿回文字决策。
-验证网络可行性 + 提供可用的 client/server 骨架。
+VLM を遠隔 3090PC で常駐させ、本機から word-wolf のシーンを送って「今の音源は誰か」を
+文字で受け取る。**提案書 §2.4「音図を VLM にどう入力するか」の 2 方式を実測で比較する**
+ための骨格。
 
-## 结构
+- **mode_A = (A) テキスト化**：プレーン RGB + 音源のテキスト説明。どのテキスト形式が
+  効くかを比較(座標 / 方位角 / 自然言語 / 3x3格子 / 上位Kピーク)。
+- **mode_B = (B) 画像重畳**：音図を黄色で重畳した画像。重畳の α で読みが変わるかを比較。
+
+判定はどちらも厳密 4 クラス(Left / Right / Teleoperator / Others)。§2.4 の既記載
+「大規模 VLM なら方向 ~91.7%」の続き(mode_B/results の 160 枚参照結果)に、手挑 9 枚での
+A/B・形式・α 比較を足す。
+
+## 構造
 
 ```
 try-VLM-server/
-├── test/     网络延迟测试(已完成): latency_test.py —— 测原图 vs JPEG vs 64x64 的
-│             传输延迟和编解码耗时, 结论见下
-├── server/   部署在远程 3090PC: vlm_server.py (echo / qwen 后端) + requirements.txt
-└── local/    运行在本机: vlm_client.py —— 建 SSH 隧道, 发图收结果
+├── selection.csv     手挑 9 枚の tick(bag+tick_ts+gt+vad)。両 mode の生成元
+├── common/           共有: tunnel(SSH隧道) / protocol(分帧) / prompt(共通足場+採点前段) / grading(4クラス採点)
+├── server/           遠隔 3090 に常駐。vlm_server.py はモード非依存(prompt+画像→文字)。両 mode で共用
+├── test/             網络延迟テスト(既完了): latency_test.py
+├── mode_A/           テキスト化: textifier.py / client.py / eval.py / sample/ / results/
+└── mode_B/           画像重畳:   overlay_info.py / client.py / eval.py / sample/ / results/
 ```
 
-两台机器都会部署整个 p6 文件夹; 在本机写代码, 同步到 server。
-`local/` 与 `server/` 各自独立、内联相同的分帧协议, 互不依赖。
+**server は 1 つで両モードを兼ねる**(prompt + JPEG → 文字。テキスト化 / 重畳の違いは
+すべて local 側で吸収)。共通足場を A/B で共有し、違うのは「音源情報の一行」だけなので、
+テキスト vs 画像重畳というモダリティ差だけを切り出して比較できる。
 
-## 网络方案
+## 網络方案(mode 非依存)
 
-3090PC 在 Riken 内网, 需经网关 `Riken` 两跳 ProxyJump, 且两跳密码不同
-(网关 grp / 目标 chen)。单个 sshpass 只能喂一个密码, 所以用**嵌套 sshpass**:
-外层喂 chen 密码给 3090PC, `ProxyCommand` 内层喂 grp 密码给网关。全自动、远程零安装。
+3090PC は Riken 内網。網関 `Riken` を二段跳び ProxyJump、二段の密码が違う(網関 grp /
+目標 chen)ので**入れ子 sshpass**で自動化。server は `127.0.0.1:50007` のみ監听し、local が
+SSH `-L` で転送。密码は `RIKEN_GRP_PASS` / `PC3090_CHEN_PASS` で上書き可。詳細は
+`common/tunnel.py`。
 
-- server 只监听 `127.0.0.1:50007`(不对外), local 通过 SSH `-L` 端口转发连过去。
-- 密码默认取脚本常量, 可用环境变量覆盖: `RIKEN_GRP_PASS` / `PC3090_CHEN_PASS`。
-
-## 端到端跑法
+## 端到端の流れ(wolf venv)
 
 ```bash
-# 1) 远程(3090)启动 server —— 先用 echo 验证链路
-python3 server/vlm_server.py --backend echo
-#    换真模型(默认 Qwen2.5-VL-32B-Instruct-AWQ 4bit, ~20GB, 加载 1-2 分钟):
-#    python3 server/vlm_server.py --backend qwen --max-pixels 602112
+# 0) 一度だけ: サンプル生成(bag へのアクセスが要る)
+/home/chen/.virtualenvs/wolf/bin/python mode_A/sample/gen_samples.py
+/home/chen/.virtualenvs/wolf/bin/python mode_B/sample/gen_samples.py
 
-# 2) 本机运行 client(自动建隧道)
-/home/chen/.virtualenvs/wolf/bin/python local/vlm_client.py --count 5
+# 1) 遠隔 3090 で server 起動(echo で配線確認 / qwen で本番)
+python server/vlm_server.py --backend echo
+# python server/vlm_server.py --backend qwen --max-pixels 602112   # 32B-AWQ, ~20GB, 1-2分
+
+# 2) 本機で評測(自動で隧道を張る)
+/home/chen/.virtualenvs/wolf/bin/python mode_A/eval.py    # 9 枚 x 5 形式
+/home/chen/.virtualenvs/wolf/bin/python mode_B/eval.py    # 9 枚 x 全 α
 ```
 
-## 延迟测试结论 (test/latency_test.py, 真实 word-wolf 音图)
+## 延迟テスト結論 (test/latency_test.py, 実 word-wolf 音図)
 
-| 模式 | 上行 | 压缩 | 解压 | 网络 RTT(mean) |
+| モード | 上行 | 圧縮 | 解圧 | 網络 RTT(mean) |
 |------|------|------|------|------|
-| 原图 PNG | 474KB | 0 | 9ms | 166ms |
+| 原図 PNG | 474KB | 0 | 9ms | 166ms |
 | **JPEG q70** | 38KB | ~1ms | ~1ms | **67ms** |
 | JPEG q50 | 29KB | ~1ms | ~1ms | 49ms |
 | 64×64 | 6KB | ~1ms | ~0ms | 29ms |
 
-- **压缩/解压几乎免费**(~1ms), 但把网络延迟砍掉一半以上。
-- **默认用 JPEG q70**: 保真与延迟最优, 单帧网络往返 ~67ms。
-- 瓶颈只剩 VLM 推理本身, 网络不再是问题。
+**JPEG q70 が既定**(保真と延迟の最適、単帧往復 ~67ms)。瓶頸は VLM 推論本体のみ。

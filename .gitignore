@@ -28,3 +28,9 @@ train-pssp/*-run/train/runs/
 p6/try-VLM/**/*.png
 p6/try-VLM/**/*.jpg
 p6/try-VLM/**/*.jpeg
+
+# P6 try-VLM-server sample images (mode_A plain RGB / mode_B alpha overlays) — same
+# policy: regeneratable via each mode's sample/gen_samples.py; keep code + manifest.
+p6/try-VLM-server/**/*.png
+p6/try-VLM-server/**/*.jpg
+p6/try-VLM-server/**/*.jpeg
