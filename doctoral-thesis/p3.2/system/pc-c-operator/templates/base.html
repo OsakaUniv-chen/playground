@@ -1,0 +1,79 @@
+<!doctype html>
+<title>TeleOp {{ robot_name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="icon" type="image/png" href="/static/favicon/BLR-ロゴ-ど.png">
+
+<section class="content">
+    <!-- 映像の上に音響マップを重ねる。2 本とも独立したストリームなので、
+         PC-D は音響マップだけを取り出せる。重みは画面のスライダで変える。 -->
+    <div class="player-wrapper">
+        <div id="player-cam"></div>
+        <div id="player-soundmap"></div>
+    </div>
+
+    <div class="overlay" id="overlay_soundmap_mix">
+        <label>SoundMap
+            <input type="range" id="mix" min="0" max="100" value="30">
+            <span id="mixval">30%</span>
+        </label>
+    </div>
+
+    <div class="overlay" id="overlay_infoimage_recorder">Hold to Talk!</div>
+    <button id="recorder" class="recorder"><div class="recording-indicator"></div></button>
+
+    <div class="status-indicator">
+        <div>SPEED: <span id="speed">0</span></div>
+        <div>ROTATE: <span id="rotate">0</span></div>
+        <div>PTT: <span id="ptt">off</span></div>
+    </div>
+    <div id="indicator" class="text-indicators"></div>
+
+    <div class="overlay" id="overlay_infoimage_topleft">Navigate with <br>
+        <img border="0" src="{{ url_for('static', filename='icons8/iconscoutL.png') }}" width="60" height="60">
+    </div>
+
+    <!-- 右スティックは空き。頭部は PC-D の VLM が動かす（設計 §4.2）。
+         自律を上書きする手動介入に割り当てるかは未決。 -->
+
+    <div class="overlay" id="overlay_buttons_abxy">
+        <div class="controller-buttons">
+            <div class="btn y" id="btnY"><span>Arm Up</span></div>
+            <div class="btn x" id="btnX"><span>Arm Down</span></div>
+            <div class="btn b" id="btnB"><span>B</span></div>
+            <div class="btn a" id="btnA"><span>Talk</span></div>
+        </div>
+    </div>
+</section>
+
+<!-- CDN は使わない。現地にインターネットが無いと画面ごと落ちるため
+     vendor/ に置いたものを読む（README の「vendor 化」参照）。 -->
+<script src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/ovenplayer.js') }}"></script>
+<script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
+<script src="{{ url_for('static', filename='js/gamepad.js') }}"></script>
+<script>
+    // OME は同一機。ページが http なので ws（平文）で繋がる。
+    // WebRTC のメディア自体は DTLS/SRTP なので平文にはならない。
+    const OME = "ws://localhost:3333/app/";
+    const mkPlayer = (id, key, mute) => OvenPlayer.create(id, {
+        autoStart: true, autoFallback: true, mute: mute, controls: false,
+        sources: [{ type: "webrtc", file: OME + key }],
+        parseStream: { enabled: true }
+    });
+
+    // 下: カメラ（音声つき）  上: 音響マップ
+    const playerCam = mkPlayer("player-cam", "{{ robot_name }}stream", false);
+    const playerMap = mkPlayer("player-soundmap", "{{ robot_name }}soundmap", true);
+
+    // 上に重ねた音響マップの不透明度が混合比になる。
+    //   表示 = (1-a)×カメラ + a×音響マップ
+    // 既定 0.3 は「0.7×カメラ + 0.3×音響マップ」。
+    const mix = document.getElementById("mix");
+    const applyMix = () => {
+        const a = mix.value / 100;
+        document.getElementById("player-soundmap").style.opacity = a;
+        document.getElementById("mixval").innerText = mix.value + "%";
+    };
+    mix.addEventListener("input", applyMix);
+    applyMix();
+</script>
