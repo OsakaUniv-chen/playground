@@ -268,13 +268,26 @@ PC-D 側で分かったこと:
 ### → 3 台とも Tailscale に入れる ★★
 
 当日も遠隔である以上、これは応急処置ではなく**本番の構成**にする。
-**PC-B / PC-C / PC-D を同じ tailnet に入れると、設計が前提にしている
-「同じ LAN」が実際に成立する。** そうなれば SSH トンネルも TURN も
-候補アドレスの書き換えも要らなくなり、今の継ぎ接ぎを全部外せる。
+
+**Tailscale に入れるのは PC-C と PC-D の 2 台だけでよい。**
+PC-C がハブになっていて、**PC-B と PC-D は直接やりとりしない**:
+
+| 経路 | 相手 |
+|---|---|
+| PC-B の映像・音響マップ・機体マイク（RTMP） | PC-C の OME（**同じ LAN**） |
+| PC-B の操作者マイク受信（WebRTC） | PC-C の OME（**同じ LAN**） |
+| PC-B の台車・頭部指令（ROS） | PC-C の `app.py` と `head_relay`（**同じ LAN**） |
+| PC-D の 4 入力（WebRTC） | PC-C の OME（Tailscale） |
+| PC-D の頭部指令（TCP） | PC-C の `head_relay`（Tailscale） |
+
+16ch を PC-D へ直送する経路は削除済みで、頭部指令も PC-C 経由の中継に
+したため、**PC-B に Tailscale を入れる理由が無い**（機体に載る機械なので
+構成要素は少ないほどよい）。
 
 - WebRTC は素の UDP で繋がる（`OME_USE_TURN=0`）
-- 頭部指令の中継も同じ経路
 - `OME_HOST` に PC-C の tailscale アドレスを書くだけ
+- PC-C の `HEAD_RELAY_BIND` を tailscale アドレスにする（既定の
+  127.0.0.1 のままだと PC-D から届かない）
 
 PC-D には既に Tailscale が入っているが**別の人（Xu）のアカウント**
 （`xuchenfei2000@outlook.com`）なので、同じ tailnet に入る手立てが要る。

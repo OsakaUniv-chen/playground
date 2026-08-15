@@ -41,6 +41,17 @@ python3 infer/head_controller.py --demo    # 頭部指令の経路確認（正�
 
 ### PC-C への繋ぎ方（理研から）
 
+**PC-C とは Tailscale で繋がる。** 両者は同じ tailnet の正式メンバーで、
+`OME_HOST` に PC-C の tailscale アドレスを書けば素の UDP で通る
+（TURN も SSH トンネルも不要）。**PC-D が話す相手は PC-C だけ**で、
+PC-B とは直接やりとりしない。
+
+**ノード共有（Share device）では駄目。** 共有された側から相手の tailnet へ
+発起できず、signalling も頭部指令も通らない。invite で正式メンバーにすること。
+
+以下は Tailscale が使えない場合の代替（メディアは通らない）。
+
+
 **PC-D は理研にあり、PC-A/B/C の LAN に居ない。** PC-C 側にも理研側にも着信
 ポートが無いので、直接は繋がらない。唯一通るのは「PC-C から SSH で出て行く」
 方向なので、**PC-C 側でトンネルを張り**、PC-D はそれを localhost として見る。

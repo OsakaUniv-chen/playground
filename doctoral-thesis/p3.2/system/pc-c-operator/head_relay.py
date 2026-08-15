@@ -11,9 +11,9 @@ humble で既定の RMW が違い（CycloneDDS / FastDDS）、distro 間通信�
 それだけのために DDS を通すより素の TCP のほうが確実で、
 **PC-D 側に ROS が要らなくなる**。
 
-経路は PC-C から張った SSH トンネル（`-R`）の上に乗る。PC-D から見ると
-このサーバが自分の localhost に居るように見える。**そのため既定では
-127.0.0.1 にだけ bind する**（トンネルの出口以外から触らせない）。
+PC-D とは Tailscale で繋がっているので、**tailscale のアドレスで待ち受ける**
+（`HEAD_RELAY_BIND`、既定は 127.0.0.1 なので必ず設定すること）。
+PC-B は同じ LAN に居て PC-C としか話さないため、Tailscale は要らない。
 
 プロトコルは 1 行 1 指令の JSON:
 
