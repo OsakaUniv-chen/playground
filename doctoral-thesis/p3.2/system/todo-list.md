@@ -252,6 +252,31 @@ UDP がそのまま通るので TURN も SSH トンネルも要らなくなる�
 
 SSH トンネルは「頭部指令だけ通せばよい」場合の逃げ道として残す。
 
+#### 手順（PC-C 側は root が要るので手作業）
+
+```bash
+# 1. PC-C に入れて tailnet に入る（ブラウザ認証が要る）
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up            # 出てくる URL を開いて承認
+tailscale ip -4              # ここで出た 100.x.x.x を控える
+
+# 2. PC-D 側の設定を (B) に切り替える
+#    pc-d-server/config.env の (A) をコメントアウトし (B) を有効にして
+#    OME_HOST と HEAD_RELAY_HOST に PC-C の 100.x.x.x を書く
+
+# 3. 中継を tailscale から触れるように bind を変える（PC-C）
+export HEAD_RELAY_BIND=0.0.0.0     # または PC-C の 100.x.x.x
+```
+
+**OME の再起動は要らない見込み。** OME は起動時に列挙した NIC しか
+ICE candidate に載せないので tailscale0 を知らないが、`ome_receiver.py` が
+候補のアドレスを signalling で繋いだ先（= PC-C の tailscale アドレス）に
+書き換えるため受信側は困らない。**ブラウザで見るときだけは**
+OME を再起動しないと操作画面が映らない可能性がある。
+
+既存の `tun0`（split tunnel）とは別インタフェースで、経路も
+`100.64.0.0/10` と重ならないので共存できるはず。
+
 ### 手 1: SSH のポート転送（メディアには足りない）
 
 SSH の `-R`（リモート転送）で、**PC-C 側のポートを PC-D の localhost に生やす。**
