@@ -2,6 +2,12 @@
 
 推論用の GPU を積む前提の 1 台。PC-B は入出力と収録に徹し、重い処理はここに置く。
 
+**この機械に ROS は要らない。** OME からの受信（`recv_ome.py`）は gi と numpy
+だけで動き、頭部指令は TCP で PC-C の `head_relay.py` へ投げて向こうで ROS に
+載せ替える。PC-D は galactic で PC-B / PC-C の humble とは既定の RMW が違う
+（CycloneDDS / FastDDS）ため、そもそも DDS では素直に繋がらない。
+必要なのは python3 + `python3-gi` + GStreamer + numpy。
+
 ## 起動
 
 ```bash
@@ -19,7 +25,7 @@ python3 infer/head_controller.py --demo    # 頭部指令の経路確認（正�
 | 場所 | 内容 |
 |---|---|
 | `gst/recv_ome.py` | **OME から 4 入力（映像・音響マップ・機体マイク・操作者マイク）を受ける。** 推論側はここから最新の 1 枚を取る |
-| `infer/head_controller.py` | 「誰に向くか」を決めて PC-B へ publish する。**骨格のみ** |
+| `infer/head_controller.py` | 「誰に向くか」を決めて PC-C の中継へ TCP で送る。**骨格のみ** |
 
 ### PC-C への繋ぎ方（理研から）
 
@@ -29,8 +35,10 @@ python3 infer/head_controller.py --demo    # 頭部指令の経路確認（正�
 
 ```bash
 # PC-C 側（pc-c-operator/config.env の PCD_SSH_HOST を設定して ./run.sh すると自動）
-ssh -N -R 3333:localhost:3333 -R 3478:localhost:3478 3090PC
+ssh -N -R 3333:localhost:3333 -R 3478:localhost:3478 -R 7997:localhost:7997 3090PC
 ```
+
+3333 が signalling、3478 が TURN、7997 が頭部指令の中継。
 
 PC-D 側は `config.env` で `OME_HOST=127.0.0.1` `OME_USE_TURN=1` にしてあるので、
 `recv_ome.py` はそのまま繋がる。**`OME_USE_TURN=1` は必須**で、SSH は TCP しか
@@ -67,8 +75,11 @@ a = inp.latest_audio("mic")         # "mic" "operator"
 
 ### 頭部制御
 
-`head_controller.py` が `<robot>/head/command`（`BoxieMotors`、`[pitch, yaw, roll]` を度で）
-に publish し、PC-B の `head_driver.py` が可動域制限と smoothing を掛けてモータを回す。
+`head_controller.py` が `[pitch, yaw, roll]`（度）を JSON 1 行として TCP で
+PC-C の `head_relay.py` へ送り、そこで `<robot>/head/command`（`BoxieMotors`）に
+なる。PC-B の `head_driver.py` が可動域制限と smoothing を掛けてモータを回す。
+中継が落ちていても 5 秒ごとに繋ぎ直し、送れなかったぶんは捨てる
+（古い指令で首が動かないように）。
 **可動域は PC-B 側で掛かるので、こちらは制限を知らずに指令を出してよい。**
 実際に適用された値は `<robot>/head/applied` に出る。
 

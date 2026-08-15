@@ -9,17 +9,32 @@ OME サーバ・操作 UI サーバ・ブラウザ・操作者マイクの送出
 source env.sh
 
 python3 app.py                    # 操作 UI サーバ（:7779）
-python3 gst/operator_mic_send.py  # 操作者マイク -> PC-B（PTT 待ち）
-./ome/run_ome.sh                  # OME（docker）
+python3 gst/operator_mic_send.py  # 操作者マイク -> OME（PTT 待ち）
+python3 head_relay.py             # PC-D の頭部指令 -> ROS
+./ome/run_ome.sh                  # OME の状態確認（systemd 常駐なので起動は不要）
 ```
 
 まとめて起動するなら（OME は systemd で常駐しているので含めない）：
 
 ```bash
-./run.sh              # UI + マイク送出 + PC-D へのトンネル。ログは log/ に出る
+./run.sh              # UI + マイク送出 + 頭部指令の中継 + PC-D へのトンネル
 ./run.sh status       # 生きているか
 ./run.sh stop         # 停止
 ```
+
+### 頭部指令の中継（`head_relay.py`）
+
+PC-D が決めた頭部の向きを受けて `<robot>/head/command` に publish し直す。
+
+    PC-D ── TCP/JSON ──> head_relay ── ROS ──> PC-B の head_driver
+
+**PC-D と DDS で直接喋らせない。** PC-D は理研にあって着信ポートが無く、
+distro も違う（galactic / humble で既定の RMW が別物）。跨ぐのは 10 Hz・
+整数 3 個の topic 1 本なので、素の TCP で受けてここで ROS に載せ替える。
+おかげで **PC-D に ROS を入れる必要が無い。**
+
+既定では `127.0.0.1:7997` にだけ bind する（下のトンネルの出口以外から
+触らせない）。PC-D が同じ LAN に居るなら `HEAD_RELAY_BIND=0.0.0.0`。
 
 ### PC-D（理研）へのトンネル
 
@@ -28,8 +43,10 @@ python3 gst/operator_mic_send.py  # 操作者マイク -> PC-B（PTT 待ち）
 `config.env` の `PCD_SSH_HOST` を設定しておくと `run.sh` が張る（空なら張らない）。
 
 ```bash
-ssh -N -R 3333:localhost:3333 -R 3478:localhost:3478 3090PC
+ssh -N -R 3333:localhost:3333 -R 3478:localhost:3478 -R 7997:localhost:7997 3090PC
 ```
+
+3 本を 1 つのトンネルに相乗りさせる（signalling / TURN / 頭部指令の中継）。
 
 `-R` は「こちらのポートを向こうの localhost に生やす」向き。SSH は TCP しか
 運べないので、PC-D 側は OME 内蔵の TURN(TCP) を使う（`OME_USE_TURN=1`）。

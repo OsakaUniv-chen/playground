@@ -50,13 +50,15 @@ start() {  # start <name> <command...>
     echo "  $name  pid=$!  -> $LOG/$name.log"
 }
 
-start ui   python3 "$HERE/app.py"
-start mic  python3 "$HERE/gst/operator_mic_send.py"
+start ui    python3 "$HERE/app.py"
+start mic   python3 "$HERE/gst/operator_mic_send.py"
+start relay python3 "$HERE/head_relay.py"      # PC-D からの頭部指令 -> ROS
 
 # PC-D（理研）への SSH トンネル。PC-D 側にも PC-C 側にも着信ポートが無いので、
 # **PC-C から出て行く 1 本**で OME の signalling と TURN を PC-D の localhost に
 # 生やす。-R がその向き。UDP は運べないので PC-D は TURN(TCP) を使う
-# （pc-d-server/config.env の OME_USE_TURN=1）。
+# （pc-d-server/config.env の OME_USE_TURN=1）。頭部指令の中継も同じ
+# トンネルに相乗りする（HEAD_RELAY_PORT）。
 # PCD_SSH_HOST が空なら張らない（PC-D が同じ LAN に居る場合）。
 if [ -n "${PCD_SSH_HOST:-}" ]; then
     SSH_BIN=$(command -v autossh || command -v ssh)
@@ -66,6 +68,7 @@ if [ -n "${PCD_SSH_HOST:-}" ]; then
         -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes \
         -R "${OME_WS_PORT}:localhost:${OME_WS_PORT}" \
         -R "${OME_TURN_PORT}:localhost:${OME_TURN_PORT}" \
+        -R "${HEAD_RELAY_PORT}:localhost:${HEAD_RELAY_PORT}" \
         "$PCD_SSH_HOST"
 fi
 

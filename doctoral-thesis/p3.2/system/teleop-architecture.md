@@ -49,12 +49,18 @@ PC-A はサイネージ画面の表示のみ。タッチパネルではなく、
 | 機体マイク | 現場の音、発話の有無 | OME サーバから |
 | 操作者の音声 | 操作者が何を言ったかの把握 | OME サーバから |
 
-### 4.2 出力（ROS publish）
+### 4.2 出力
 
 | 対象 | 内容 |
 |---|---|
 | 頭部 yaw / pitch | 「誰に向くか」の決定 |
 | その他の行動決定 | 発話タイミング、姿勢など |
+
+**PC-D からは ROS で出さない。** PC-D は理研にあって同じ LAN に居らず、
+着信ポートも無い。ROS の distro も違う（PC-D は galactic、PC-B / PC-C は
+humble で既定の RMW が別物）。跨ぐのは 10 Hz・整数 3 個の指令 1 本なので、
+素の TCP/JSON で PC-C へ送り、PC-C の `head_relay.py` が
+`<robot>/head/command` に publish し直す。**PC-D に ROS は要らない。**
 
 
 ## 5. 記録

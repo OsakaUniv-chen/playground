@@ -1,5 +1,5 @@
 #!/bin/bash
-# PC-D の常駐プロセスを起動・停止する。
+# PC-D の常駐プロセスを起動・停止する。**この機械は ROS を使わない。**
 #   ./run.sh            起動（ログは log/ に出る）
 #   ./run.sh stop       停止
 #   ./run.sh status     生きているか

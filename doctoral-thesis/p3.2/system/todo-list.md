@@ -231,9 +231,12 @@ OME が「トンネルの向こうからどう見えるか」を知らなくて�
 
 ### PC-D だけ ROS の distro が違う ★
 
-**PC-B / PC-C は humble、PC-D は galactic。** `common/config.env` は
-`/opt/ros/*/setup.bash` を拾う形にし、PC-D は `pc-d-server/config.env` で
-galactic を明示してある。ただし **distro 差の本質は起動スクリプトではなく通信**:
+**PC-B / PC-C は humble、PC-D は galactic。** ただし
+**PC-D は ROS を使わない構成にしたので、この差は問題にならなくなった**
+（頭部指令は下の TCP 中継、受信は rclpy 不要）。`common/config.env` は
+`/opt/ros/*/setup.bash` を拾う形にしてある。
+
+以下は「もし DDS を跨がせるなら」何が起きるかの記録:
 
 | 問題 | 中身 |
 |---|---|
@@ -257,9 +260,18 @@ galactic を明示してある。ただし **distro 差の本質は起動スク�
 - galactic ↔ humble が非対応な点は Cyclone にしても消えない
 
 **10 Hz・整数 3 個の topic 1 本のために背負う仕掛けとしては重すぎる。**
-素の TCP か WebSocket で PC-D → PC-C へ送り、PC-C 側の小さな中継が
-ROS に publish し直すほうが、NAT も distro 差も同時に消える
-（PC-D に ROS 自体が要らなくなる。受信側 `recv_ome.py` は rclpy を使わない）。
+
+### → 素の TCP 中継にした（実装済み）
+
+    PC-D `infer/head_controller.py` ── TCP/JSON ──>
+    PC-C `head_relay.py` ── ROS ──> PC-B `head_driver.py`
+
+NAT も distro 差も同時に消え、**PC-D に ROS が要らなくなった**
+（受信側 `recv_ome.py` はもともと rclpy を使わない）。接続は SSH トンネルに
+相乗りする（`HEAD_RELAY_PORT` を `-R` に足してある）。
+
+1 台での実測: 10 Hz で `/boxie/head/command` に届き、中継を落とすと
+5 秒ごとに再試行、戻すと自動で繋ぎ直す。**理研との間ではまだ未確認。**
 
 ### 手 2: VPN を 3 台に入れる
 
