@@ -194,11 +194,15 @@ class OmeInputs:
         out = {}
         for key, rx in self.rx.items():
             item = self.latest(key)
+            age = item.age_sec() if item is not None else None
             out[key] = {
                 "video": rx.n_video,
                 "audio": rx.n_audio,
-                "connected": rx.connected,
-                "age": item.age_sec() if item is not None else None,
+                # 古い GStreamer（PC-D の 1.16）には connection-state が無く
+                # rx.connected が立たない。実際に届いているかは
+                # 「最近データが来たか」で見るほうが確実。
+                "connected": rx.connected or (age is not None and age < 2.0),
+                "age": age,
             }
         return out
 
