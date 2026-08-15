@@ -276,8 +276,37 @@ PC-D 側で分かったこと:
 - 頭部指令の中継も同じ経路
 - `OME_HOST` に PC-C の tailscale アドレスを書くだけ
 
-PC-D には既に Tailscale が入っているが**別の人（Xu）のアカウント**なので、
-ノード共有か、こちらのアカウントでの profile 追加が要る（下記）。
+PC-D には既に Tailscale が入っているが**別の人（Xu）のアカウント**
+（`xuchenfei2000@outlook.com`）なので、同じ tailnet に入る手立てが要る。
+
+#### ノード共有（Share device）は駄目だった ★
+
+Xu が 3090PC を共有し、こちらで受けるところまでは成功した
+（PC-C の tailnet に `device-of-shared-to-user` として見える）。**しかし使えない。**
+
+| 方向 | 結果 |
+|---|---|
+| PC-C → PC-D | TCP 通る（22 番で確認） |
+| **PC-D → PC-C** | **TCP は通らない。** `{"src":["*"],"dst":["*"],"ip":["*"]}` まで緩めても不通 |
+| 直結 | 常に `direct connection not established`。DERP 中継のまま |
+
+`tailscale ping` は通るが、あれは WireGuard 層の疎通確認で ACL を通らないため
+アプリの通信が通る証拠にならない。
+
+**Share は「この 1 台へのアクセス権を渡す」機能で、両者を相互接続する物ではない。**
+共有された側から相手の tailnet へ**発起できない**（仕様。ACL の書き方の問題ではない）。
+こちらが必要としているのは逆向き — signalling も頭部指令も PC-D が発起し、
+メディアの ICE は双方向 UDP が要る。
+
+#### → 同じ tailnet の正式メンバーにする
+
+| 手 | 操作する人 | 代価 |
+|---|---|---|
+| **Xu の tailnet に user として招待してもらう** | Xu（invite するだけ） | **PC-D は一切変更不要。** PC-C と PC-B が Xu の tailnet のメンバーになる |
+| PC-D をこちらの tailnet へ | こちら（PC-D に sudo あり） | Xu のノードが彼の網で離線する |
+
+前者が Xu の手間も PC-D への影響も小さい。ただし PC-C / PC-B が
+他人の管理する tailnet に入ることになるので、そこは了解の上で。
 
 **PC-D には既に Tailscale が入って動いている**（`100.104.252.121`、
 tailnet に他の機械も居る）。**PC-C に入れて同じ tailnet に入れれば、
