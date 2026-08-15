@@ -8,6 +8,16 @@
 （CycloneDDS / FastDDS）ため、そもそも DDS では素直に繋がらない。
 必要なのは python3 + `python3-gi` + GStreamer + numpy。
 
+```bash
+sudo apt install gir1.2-gst-plugins-bad-1.0   # GstWebRTC の typelib（未導入だった）
+```
+
+**この機械は Ubuntu 20.04 / Python 3.8 / GStreamer 1.16.3** で、PC-C（1.20.3）
+より古い。`webrtcbin` の `latency` は 1.18 からなので `ome_receiver.py` は
+プロパティの有無を見てから設定する。**TURN の `?transport=tcp` も 1.16 では
+効かず relay candidate が採れない**ため、SSH トンネル + TURN でメディアを
+運ぶ経路は使えない（頭部指令の TCP 中継は問題なく通る）。
+
 ## 起動
 
 ```bash
@@ -92,7 +102,7 @@ PC-C の `head_relay.py` へ送り、そこで `<robot>/head/command`（`BoxieMo
 |---|---|
 | VLM 推論 | `decide()` が `NotImplementedError`。入力は `OmeInputs` から取れる状態になっている |
 | 音響マップ生成 | PC-B で生成して OME へ送る形になったので、こちらは受けるだけ |
-| 理研からの疎通 | **未確認。** 確認は 1 台の loopback のみ。下の「PC-C への繋ぎ方」を現地で通す |
+| 理研からのメディア受信 | **通っていない。** 頭部指令（TCP 中継）は実機で確認済みだが、WebRTC は ICE が connected まで行ってメディアが来ない。1.16 の TURN が効かないため。**Tailscale で UDP を通すのが早い**（PC-D には既に入っている。todo-list.md 参照） |
 
 ## 記録の観点
 

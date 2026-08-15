@@ -445,6 +445,21 @@ class OmeReceiver:
 
     # ---- メディア ----
 
+    def _set_if_supported(self, name, value):
+        """その版の webrtcbin に有るプロパティだけ設定する。"""
+        if self.webrtc.find_property(name) is None:
+            self.log("warn", f"webrtcbin に {name} が無い（古い GStreamer）。既定のまま使う")
+            return False
+        self.webrtc.set_property(name, value)
+        return True
+
+    def _connect_if_supported(self, prop, handler):
+        """そのプロパティが有るときだけ notify を繋ぐ。"""
+        if self.webrtc.find_property(prop) is None:
+            return False
+        self.webrtc.connect(f"notify::{prop}", handler)
+        return True
+
     def _build_pipeline(self, data):
         if self.pipeline is not None:
             return
@@ -454,13 +469,17 @@ class OmeReceiver:
         if self.webrtc is None:
             self.log("error", "webrtcbin が無い")
             return
-        self.webrtc.set_property("bundle-policy", "max-bundle")
-        self.webrtc.set_property("latency", self.latency_ms)
+        # **機械ごとに GStreamer の版が違う。** PC-C は 1.20 だが PC-D
+        # （Ubuntu 20.04）は 1.16 で、webrtcbin の `latency` は 1.18 から。
+        # 無い物を set_property すると TypeError でそこから先が全部止まるので、
+        # 有るものだけ設定する。
+        self._set_if_supported("bundle-policy", "max-bundle")
+        self._set_if_supported("latency", self.latency_ms)
         self.pipeline.add(self.webrtc)
         self.webrtc.connect("on-ice-candidate", self._on_ice_candidate)
         self.webrtc.connect("pad-added", self._on_pad_added)
-        self.webrtc.connect("notify::ice-connection-state", self._on_ice_state)
-        self.webrtc.connect("notify::connection-state", self._on_conn_state)
+        self._connect_if_supported("ice-connection-state", self._on_ice_state)
+        self._connect_if_supported("connection-state", self._on_conn_state)
         if self.use_turn:
             self._setup_turn(data)
 

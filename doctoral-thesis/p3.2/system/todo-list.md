@@ -192,19 +192,55 @@ Host Riken          HostName kuroko-gw.ad180.riken.jp   User grp
 Host 3090PC         HostName 192.168.3.44                User chen   ProxyJump Riken
 ```
 
-PC-D は理研の内側（`192.168.3.44`）で、**踏み台 SSH 以外の入口が無い。**
+PC-D は理研の内側（`192.168.3.68`）で、**踏み台 SSH 以外の入口が無い。**
 
 - この機械の `tun0` は `172.18/22/27/30.x` へ経路を持つが、**`192.168.3.0/24` は
   含まれない。** つまり既存 VPN では PC-D に届かない
-- **踏み台 `Riken` は公開鍵を受け付けず、パスワードを聞いてくる**（手元の
-  `id_ed25519` は拒否された）。トンネルを常駐させるなら、踏み台に鍵を
-  登録するか `sshpass` 等が要る。**この状態では自動再接続も組めない**
+- 踏み台 `Riken` 経由の鍵認証は**通るようになった**（実機で確認済み）
 - PC-C も家庭用ルータの内側で、**IPv4 の着信が無い**
 
 **つまり両側とも着信できない。** 唯一確実に通るのは
 「PC-C から SSH で PC-D へ出て行く」方向だけ。
 
-### 手 1: SSH のポート転送（新しい物を入れずに済む）
+### 実機で試した結果（2026-08-15）★
+
+PC-C から `-R 3333 / 3478 / 7997` のトンネルを張り、理研の PC-D から実行した。
+
+| 経路 | 結果 |
+|---|---|
+| **頭部指令 PC-D → PC-C → ROS** | **通った。** 10 Hz で送って `head/command` に 99 msg/10s。純粋な TCP なのでトンネルに素直に乗る |
+| **メディア OME → PC-D（WebRTC）** | **通らない。** ICE は `connected` まで行くがメディアが来ない |
+
+メディアが来ない理由: **PC-D の GStreamer は 1.16.3**（PC-C は 1.20.3）で、
+TURN の `?transport=tcp` が効かず **relay candidate が採れない**
+（gathering が 0.3 秒で complete し、relay 候補が 1 つも出ない）。
+SSH は TCP しか運べないので ICE の UDP（10000-10004）も通らず、
+結果として使える経路が無い。
+
+PC-D 側で分かったこと:
+
+| 項目 | 値 |
+|---|---|
+| OS / Python | Ubuntu 20.04.6 / Python 3.8.10 |
+| GStreamer | **1.16.3**（`latency` プロパティは 1.18 から。無い物を触ると全部止まるので存在確認してから設定するようにした） |
+| `nicesrc` / `webrtcbin` | 導入済み |
+| **`gir1.2-gst-plugins-bad-1.0`** | **未導入。** GstWebRTC の typelib が入っておらず `Namespace GstWebRTC not available` で落ちる。`sudo apt install gir1.2-gst-plugins-bad-1.0` |
+| ROS | foxy / galactic / noetic（humble は無い。**使わないので問題にならない**） |
+
+### → メディアは Tailscale にするのが早い ★
+
+**PC-D には既に Tailscale が入って動いている**（`100.104.252.121`、
+tailnet に他の機械も居る）。**PC-C に入れて同じ tailnet に入れれば、
+UDP がそのまま通るので TURN も SSH トンネルも要らなくなる。**
+
+- WebRTC は素の UDP で繋がる（`OME_USE_TURN=0`、`OME_HOST` は PC-C の
+  tailscale アドレス）
+- 頭部指令の中継も同じ経路で届く
+- 古い GStreamer の TURN 実装に依存しなくなる
+
+SSH トンネルは「頭部指令だけ通せばよい」場合の逃げ道として残す。
+
+### 手 1: SSH のポート転送（メディアには足りない）
 
 SSH の `-R`（リモート転送）で、**PC-C 側のポートを PC-D の localhost に生やす。**
 PC-C から出て行く接続だけで両方向が作れるので、着信が無くても成立する。
