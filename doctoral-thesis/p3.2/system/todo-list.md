@@ -224,8 +224,20 @@ PC-D 側で分かったこと:
 | OS / Python | Ubuntu 20.04.6 / Python 3.8.10 |
 | GStreamer | **1.16.3**（`latency` プロパティは 1.18 から。無い物を触ると全部止まるので存在確認してから設定するようにした） |
 | `nicesrc` / `webrtcbin` | 導入済み |
-| **`gir1.2-gst-plugins-bad-1.0`** | **未導入。** GstWebRTC の typelib が入っておらず `Namespace GstWebRTC not available` で落ちる。`sudo apt install gir1.2-gst-plugins-bad-1.0` |
+| `gir1.2-gst-plugins-bad-1.0` | **導入済み**（GstWebRTC の typelib。無いと `Namespace GstWebRTC not available` で落ちる） |
+| Python | 系統は 3.8.10。`~/anaconda3` に 3.10 もあるが、そちらに gi は入っていない |
 | ROS | foxy / galactic / noetic（humble は無い。**使わないので問題にならない**） |
+
+### GStreamer を新しくできるか（調べた結果：どちらも駄目）
+
+| 手 | 結論 |
+|---|---|
+| apt でシステムを更新 | **不可。** focal のリポジトリには 1.16.3 しか無く、第三者 PPA が要る。加えて**共有機**で `/home` に 3 ユーザ、うち `xu` が図形セッションに 25 日ログインしっぱなし。`libgstreamer1.0-0` は `gnome-shell` / `pulseaudio` / `nautilus` が依存しており、**他人の環境を壊しかねない** |
+| conda-forge（`~/anaconda3` が既にある） | **効かない。** GStreamer 1.28.6 も `gst-plugins-bad` も有るが、**`libnice` が conda-forge に無い**。webrtcbin は ICE を libnice に頼るので、新しくしても「libnice elements are not available」で同じ場所に戻る |
+
+**そもそも 1.16 でも SDP 交換・answer 生成・ICE 協商は `connected` まで通っている。**
+壊れているのは TURN-over-TCP という特定の経路だけなので、
+**UDP が通る経路さえ用意すれば版を上げる必要が無い。**
 
 ### → メディアは Tailscale にするのが早い ★
 
