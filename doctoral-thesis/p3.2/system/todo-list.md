@@ -211,11 +211,19 @@ PC-C から `-R 3333 / 3478 / 7997` のトンネルを張り、理研の PC-D �
 | **頭部指令 PC-D → PC-C → ROS** | **通った。** 10 Hz で送って `head/command` に 99 msg/10s。純粋な TCP なのでトンネルに素直に乗る |
 | **メディア OME → PC-D（WebRTC）** | **通らない。** ICE は `connected` まで行くがメディアが来ない |
 
-メディアが来ない理由: **PC-D の GStreamer は 1.16.3**（PC-C は 1.20.3）で、
-TURN の `?transport=tcp` が効かず **relay candidate が採れない**
-（gathering が 0.3 秒で complete し、relay 候補が 1 つも出ない）。
+メディアが来ない理由: **`webrtcbin` が TURN の relay candidate を採らない。**
+`add-turn-server` は成功し `turn://ome:airen@...:3478?transport=tcp` が
+validate されるのに、割り当ての痕跡すら残らず relay 候補が 1 つも出ない。
 SSH は TCP しか運べないので ICE の UDP（10000-10004）も通らず、
-結果として使える経路が無い。
+使える経路が無くなる。
+
+**これは GStreamer の版のせいではない。** 当初 PC-D の 1.16.3 が古いためと
+書いたが、**PC-C の 1.20.3 でも `--turn` を指定して relay 候補は 0 個**
+（同機では host 候補で繋がるのでメディアは流れる。TURN は使われていない）。
+どちらの版でも同じなので、**版を上げても解決しない。**
+webrtcbin + libnice と OME 内蔵 TURN の組み合わせの問題で、原因は未特定。
+ブラウザ（OvenPlayer）は TcpForce のもとで TURN を使えているので、
+gst クライアント側の話。
 
 PC-D 側で分かったこと:
 
@@ -229,6 +237,9 @@ PC-D 側で分かったこと:
 | ROS | foxy / galactic / noetic（humble は無い。**使わないので問題にならない**） |
 
 ### GStreamer を新しくできるか（調べた結果：どちらも駄目）
+
+**そもそも版を上げても直らない**（上記のとおり 1.20.3 でも relay 候補は 0）。
+参考までに、上げようとした場合の障害:
 
 | 手 | 結論 |
 |---|---|
