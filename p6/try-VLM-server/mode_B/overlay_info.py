@@ -15,5 +15,7 @@ SOUND_INFO = (
     "location, while dark, un-highlighted areas are quiet. The single brightest "
     "yellow region marks where the sound is coming from right now. Read the position "
     "of that bright-yellow region relative to the left/right players and the "
-    "lower-centre teleoperator region."
+    "lower-centre teleoperator region. Decide PRIMARILY from this overlay (where the "
+    "brightest yellow is); use the image only to map that location to one of the four "
+    "labels — do NOT pick whoever merely looks like they are speaking (mouth, gestures)."
 )

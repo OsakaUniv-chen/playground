@@ -5,13 +5,13 @@
 sample_XX_aNN.png(NN = α*100)として保存する。α 感度(重畳の濃さで VLM の読みが
 変わるか)を見るのが mode_B の主眼。
 
-重畳式: addWeighted(sm_color, α, cam1080, CAM_BETA, 0)。実験映像(build_dataset.py /
-bag2video.py)と同じ黄色重畳。CAM_BETA は 0.8 固定、α だけ振る。α=0.6 が現行基準。
-音図は gt と同じ masked+transformed(label_input_sm)。
+重畳式は**凸結合** addWeighted(sm_color, α, cam1080, 1-α, 0)（音図×α + RGB×(1-α) = 1）。
+α だけ振る: α小=RGB主体で薄い黄、α大=音図主体で RGB は暗くなる。音図は gt と同じ
+masked+transformed(label_input_sm)、色は実験映像と同じ黄色(明るいほど大)。
 
 用法(wolf venv):
   /home/chen/.virtualenvs/wolf/bin/python gen_samples.py
-  /home/chen/.virtualenvs/wolf/bin/python gen_samples.py --alphas 0.3,0.6,0.9
+  /home/chen/.virtualenvs/wolf/bin/python gen_samples.py --alphas 0.1,0.5,0.9
 """
 import argparse
 import csv
@@ -24,8 +24,7 @@ import cv2
 HERE = Path(__file__).resolve().parent
 SELECTION = HERE.parents[1] / "selection.csv"
 TRIAL2 = Path("/home/chen/Documents/Playground/p6/try-VLM/trial-2")
-CAM_BETA = 0.8
-DEFAULT_ALPHAS = [0.3, 0.45, 0.6, 0.75, 0.9]
+DEFAULT_ALPHAS = [0.3, 0.5, 0.7]
 
 sys.path.insert(0, str(TRIAL2))
 from common2 import (gen_sm, frame_at, label_input_sm, bag_dir,       # noqa: E402
@@ -63,7 +62,7 @@ def main():
             cam1080 = cv2.resize(fr, (1080, 1080), interpolation=cv2.INTER_AREA)
             sm_color = L.sm_to_color(label_input_sm(sm, vad), plot_size=1080)
             for a in alphas:
-                blend = cv2.addWeighted(sm_color, a, cam1080, CAM_BETA, 0)
+                blend = cv2.addWeighted(sm_color, a, cam1080, 1.0 - a, 0)   # 凸結合
                 name = "%s_a%02d.png" % (p["sample_id"], round(a * 100))
                 cv2.imwrite(str(HERE / name), blend)
                 manifest.append(dict(sample_id=p["sample_id"], alpha="%.2f" % a,

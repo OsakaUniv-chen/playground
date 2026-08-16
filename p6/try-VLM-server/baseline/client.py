@@ -1,53 +1,48 @@
 #!/usr/bin/env python3
-"""mode_A クライアント: プレーン RGB + テキスト化した音源情報を送り、話者を当てさせる。
+"""baseline クライアント: 純 RGB + プロンプトのみ(音図情報なし)で話者を当てさせる。
 
-提案書 2.4 の (A) テキスト化。**可変なのは --sample と --format だけ**。
-場面説明・遠隔者=下中央の役割・回答フォーマットは共通足場(common/prompt.py)、
-音源のテキストは textifier がピーク座標から自動生成(gt 非依存)。
+mode_A / mode_B の対照(ablation)。提案書のコア主張「視覚のみでは対象選択を誤る →
+音図で補う」を検証するため、**音図を一切与えず**、VLM が視覚だけで話者を当てられるかを見る。
+入力画像は mode_A の**プレーン RGB を流用**(独自 sample を持たない)。共通足場は 3 条件で
+同一、違いは音源情報ブロックだけ(baseline は common.prompt.BASELINE_INFO = 情報なし)。
 
-前提: 3090 で server 起動(echo で配線確認 / qwen で本番)。
-
-用法(wolf venv):
-  python client.py --sample sample_06 --format coord
-  python client.py --sample sample_11 --format profile
+前提: 3090 で server 起動。用法(wolf venv):
+  python client.py --sample sample_06
 """
 import argparse
+import csv
 import sys
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent                                   # try-VLM-server/
+ROOT = HERE.parent
+MODE_A_SAMPLE = ROOT / "mode_A" / "sample"          # プレーン RGB を流用
 sys.path.insert(0, str(ROOT))
 from common import tunnel, protocol, prompt           # noqa: E402
-from textifier import make_sound_info, FORMATS        # noqa: E402
-
-import csv                                            # noqa: E402
 
 
 def load_manifest():
-    return {r["sample_id"]: r for r in csv.DictReader(open(HERE / "sample" / "manifest.csv"))}
+    return {r["sample_id"]: r for r in csv.DictReader(open(MODE_A_SAMPLE / "manifest.csv"))}
 
 
 def main():
-    ap = argparse.ArgumentParser(description="mode_A client (テキスト化)")
+    ap = argparse.ArgumentParser(description="baseline client (音図なし・視覚のみ)")
     ap.add_argument("--sample", required=True, help="sample_id 例 sample_06")
-    ap.add_argument("--format", default="coord", choices=FORMATS)
     ap.add_argument("--quality", type=int, default=70)
     ap.add_argument("--ip", default=tunnel.DEFAULT_IP)
     ap.add_argument("--local-port", type=int, default=50017)
     ap.add_argument("--remote-port", type=int, default=50007)
-    ap.add_argument("--show-prompt", action="store_true", help="送るプロンプト全文を表示")
+    ap.add_argument("--show-prompt", action="store_true")
     args = ap.parse_args()
-    
+
     man = load_manifest()
     if args.sample not in man:
         print("!! 未知の sample: %s (候補: %s)" % (args.sample, ", ".join(man)), file=sys.stderr)
         return 1
     row = man[args.sample]
-    img_path = HERE / "sample" / row["file"]
-
-    full_prompt = prompt.build(make_sound_info(row, args.format))
+    img_path = MODE_A_SAMPLE / row["file"]
+    full_prompt = prompt.build(prompt.BASELINE_INFO)
     if args.show_prompt:
         print("---- PROMPT ----\n%s\n----------------\n" % full_prompt)
 
@@ -68,8 +63,7 @@ def main():
             print("!! server が接続を閉じた", file=sys.stderr)
             return 1
         pred = prompt.parse_label(out)
-        print("sample=%s  format=%s  gt=%s  pred=%s  %.0fms" % (
-            args.sample, args.format, row["gt_label"], pred, dt))
+        print("sample=%s  gt=%s  pred=%s  %.0fms" % (args.sample, row["gt_label"], pred, dt))
         print("---- VLM ----\n%s" % out)
     finally:
         tun.terminate()

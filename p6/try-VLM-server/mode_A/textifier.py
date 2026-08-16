@@ -1,102 +1,80 @@
 #!/usr/bin/env python3
-"""前段変換器: 音源の忠実な読み取り(manifest に保存済み)を「音源情報の一行/段落」に変換。
+"""前段変換器(mode_A): 音図の最強音源の位置を、抽象度の異なる 3 通りのテキストにする。
 
-これが mode_A の主役。データ源は gt_label を定義したのと同一の前段
-(label_current_sm の 領域絶対強度 + 代表点、gen_samples.py 参照)。gt_label という
-"答えの単語"は使わず、座標→人のグラウンディング(右座席の人? 下中央=遠隔者? 誰でもない?)を
-VLM に委ねる = honest なテスト。5 通りのテキスト形式:
+方針は「**数値そのまま → だんだん人間語へ**」という抽象度のグラデーション:
 
-  coord    最強検出の 座標(x,y) + 絶対強度     提案書の例「座標 X,Y の音が最も強い」
-  azimuth  最強検出の 方位角 + 時計方向 + 強度  中心からの角度(真上=0°、時計回り)
-  nl       最強検出の 自然言語方位 + 強度       「右側・やや下」等
-  grid     最強検出の 3x3 格子セル + 強度       「中央下のセル」
-  profile  全方向の検出を 座標 + 絶対強度で列挙  VLM 自身に最強選択させる(領域名は伏せる)
+  coord : 最強音源のピーク座標 (x, y)                     …… 数値そのまま
+  grid  : 画像を 3x3 に区切ったときの最強セル (row, col)   …… 粗い離散化
+  nl    : その 3x3 セルを自然言語の方位に言い換え          …… 人間語
 
-絶対強度(0=静か〜1=最大)を必ず併記するので、静か/曖昧な tick は Others と判断でき、
-別途「静音フラグ」を足さずに済む。client は --sample と --format だけ指定すればよい。
+いずれも「最強の音源はどこか」という同一情報を、表現の抽象度だけ変えて与える。位置は
+gt を定義したのと同一前段(領域絶対強度＋代表点、gen_samples.py)の **最強領域の代表点**
+から取り、gt ラベルの語そのものは使わない。座標系は VLM 実効入力の **756x756**(§1.2)。
 """
-import math
+FORMATS = ("coord", "grid", "nl")
 
-IMG = 1080
-CX = CY = IMG / 2.0
-FORMATS = ("coord", "azimuth", "nl", "grid", "profile")
+SRC = 1080.0            # manifest の代表点は 1080 座標
+IMG = 756               # VLM 実効入力解像度
+GRID = 3                # 3x3 グリッド
+CELL = IMG / GRID       # 252
 REGIONS = ("Left", "Right", "Teleoperator", "Others")
 _TAG = {"Left": "L", "Right": "R", "Teleoperator": "T", "Others": "O"}
+_PREFIX = "A sound-localization front-end has located the current strongest sound. "
 
 _ROW = {0: "top", 1: "middle", 2: "bottom"}
 _COL = {0: "left", 1: "centre", 2: "right"}
-_PREFIX = "A signal-processing front-end has localised the current sound. "
 
 
-def _cell(x, y):
-    col = min(2, max(0, int(x * 3 // IMG)))
-    row = min(2, max(0, int(y * 3 // IMG)))
-    return row, col
-
-
-def _clock(x, y):
-    ang = math.degrees(math.atan2(x - CX, CY - y)) % 360.0   # 0=up, 90=right, 180=down
-    hour = round(ang / 30.0) % 12
-    return ang, (12 if hour == 0 else hour)
-
-
-def _nl_phrase(x, y):
-    row, col = _cell(x, y)
-    if row == 1 and col == 1:
+def _nl_phrase(r, c):
+    if r == 1 and c == 1:
         return "centre"
-    if col == 1:
-        return "%s-centre region" % _ROW[row]
-    if row == 1:
-        return "%s side" % _COL[col]
-    return "%s-%s area" % (_ROW[row], _COL[col])
+    if c == 1:
+        return "%s-centre" % _ROW[r]      # top-centre / bottom-centre
+    if r == 1:
+        return "%s side" % _COL[c]         # left side / right side
+    return "%s-%s" % (_ROW[r], _COL[c])    # top-left, bottom-right, ...
 
 
-def _detections(row):
-    """manifest 行 -> [(strength, x, y), ...] を強度降順(領域名は伏せる)。"""
-    dets = []
+def _dominant_xy(row):
+    """manifest 行 -> 最強領域の代表点を 756 座標で返す (x, y)。"""
+    best, bx, by = -1.0, IMG // 2, IMG // 2
     for reg in REGIONS:
         t = _TAG[reg]
         e, x, y = row.get("e%s" % t), row.get("%sx" % t.lower()), row.get("%sy" % t.lower())
         if e in (None, "") or x in (None, "") or y in (None, ""):
             continue
-        dets.append((float(e), int(float(x)), int(float(y))))
-    dets.sort(reverse=True)
-    return dets
+        if float(e) > best:
+            best = float(e)
+            bx = int(round(int(float(x)) * IMG / SRC))
+            by = int(round(int(float(y)) * IMG / SRC))
+    return bx, by
+
+
+def _cell(x, y):
+    c = min(GRID - 1, max(0, int(x // CELL)))
+    r = min(GRID - 1, max(0, int(y // CELL)))
+    return r, c
+
+
+# 音源判定は音図信号を最優先、画像は位置対応づけの補助（全形式共通・末尾に付与）
+_SUFFIX = (" Decide PRIMARILY from this sound information; use the image only to map the "
+           "indicated location to one of the four labels — do NOT pick whoever merely "
+           "looks like they are speaking (mouth, gestures).")
 
 
 def make_sound_info(row, fmt):
-    dets = _detections(row)
-    if not dets:
-        return _PREFIX + "No sound was localised (the scene is silent)."
-    s, x, y = dets[0]                                   # 最強検出(front-end の top detection)
-    strength = ("The strongest sound has absolute strength %.2f (0 = silent, 1 = "
-                "loudest possible). " % s)
+    x, y = _dominant_xy(row)
 
     if fmt == "coord":
-        return (_PREFIX + strength + "It is at image pixel coordinate (%d, %d). The "
-                "image is %dx%d with (0,0) at the TOP-LEFT, x to the right, y downward."
-                % (x, y, IMG, IMG))
-
-    if fmt == "azimuth":
-        ang, hour = _clock(x, y)
-        return (_PREFIX + strength + "It is at azimuth %.0f degrees clockwise from "
-                "straight-up (0=up, 90=right, 180=down, 270=left), i.e. roughly the %d "
-                "o'clock direction in the image." % (ang, hour))
-
-    if fmt == "nl":
-        return (_PREFIX + strength + "It comes from the %s of the view." % _nl_phrase(x, y))
-
-    if fmt == "grid":
+        msg = _PREFIX + "Its peak is at image pixel coordinate (%d, %d)." % (x, y)
+    elif fmt == "grid":
         r, c = _cell(x, y)
-        return (_PREFIX + strength + "Dividing the image into a 3x3 grid, it is in the "
-                "%s-%s cell." % (_ROW[r], _COL[c]))
-
-    if fmt == "profile":
-        listing = "; ".join("at (%d, %d) strength %.2f" % (px, py, ps)
-                            for ps, px, py in dets if ps > 0.02)
-        return ("A signal-processing front-end reports the localised sound energy at "
-                "these image positions (image %dx%d, (0,0) top-left; strength 0 = "
-                "silent, 1 = loudest): %s. Decide which one, if any, is the actual "
-                "speaker." % (IMG, IMG, listing))
-
-    raise ValueError("unknown format: %s (choose from %s)" % (fmt, ", ".join(FORMATS)))
+        msg = (_PREFIX + "The image is divided into a 3x3 grid (rows 1-3 top to bottom, "
+               "columns 1-3 left to right). The strongest sound is in the cell at "
+               "row %d, column %d." % (r + 1, c + 1))
+    elif fmt == "nl":
+        r, c = _cell(x, y)
+        msg = _PREFIX + "It comes from the %s of the view." % _nl_phrase(r, c)
+    else:
+        raise ValueError("unknown format: %s (choose from %s)" % (fmt, ", ".join(FORMATS)))
+    return msg + _SUFFIX

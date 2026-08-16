@@ -90,7 +90,7 @@ class QwenBackend:
     """Qwen2.5-VL 真推理。依赖: torch, transformers, qwen-vl-utils, accelerate。"""
     name = "qwen"
 
-    def __init__(self, model=DEFAULT_MODEL, max_new_tokens=64,
+    def __init__(self, model=DEFAULT_MODEL, max_new_tokens=256,
                  min_pixels=0, max_pixels=0, **_):
         import torch
         from PIL import Image
@@ -207,7 +207,8 @@ def main():
     ap.add_argument("--port", type=int, default=50007)
     ap.add_argument("--backend", choices=["echo", "qwen"], default="qwen")
     ap.add_argument("--model", default=DEFAULT_MODEL)
-    ap.add_argument("--max-new-tokens", type=int, default=64)
+    ap.add_argument("--max-new-tokens", type=int, default=256,
+                    help="生成トークン上限(既定 256。'理由 + ANSWER: 語'を収めるため 128 以上推奨)")
     ap.add_argument("--min-pixels", type=int, default=0,
                     help="每图最小 visual token 像素数(0=不限)")
     ap.add_argument("--max-pixels", type=int, default=602112,
