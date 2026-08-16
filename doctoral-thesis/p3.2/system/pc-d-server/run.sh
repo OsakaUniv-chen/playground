@@ -4,12 +4,9 @@
 #   ./run.sh stop       停止
 #   ./run.sh status     生きているか
 #
-# **2 つの Python を使い分ける。**
-#   audio_send  システムの python3（3.8）── GStreamer が要る。focal の
-#               python3-gi は 3.8 用しか無い
-#   asr         $ASR_PYTHON（3.10 の venv）── faster-whisper が要る。
-#               3.8 には入らない（ビルドが失敗する）
-# 詳しくは README の「環境を作る」。
+# 動かすのは asr.py 1 本（OME からの受信も文字起こしもこの中）。
+# 走らせる Python は $ASR_PYTHON ── PyGObject と faster-whisper の両方が
+# 入った 3.10。作り方は README の「環境を作る」。
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/env.sh"
@@ -75,13 +72,9 @@ start() {  # start <name> <command...>
     echo "  $name  pid=$!  -> $LOG/$name.log"
 }
 
-# asr を先に上げる。audio_send は繋がらなければ 3 秒ごとに繋ぎ直すので
-# 順序はどちらでもよいが、先に上げておくと最初の発話から拾える
-# （モデルの読み込みに medium で 10 秒ほどかかる）。
-# CUDA のライブラリは asr にだけ渡す（env.sh の説明）。受信側は
-# GStreamer なので、その loader に CUDA を混ぜない。
-start asr         env LD_LIBRARY_PATH="$ASR_LD_LIBRARY_PATH" "$ASR_PYTHON" -u "$HERE/asr.py"
-start audio_send  python3 -u "$HERE/audio_send.py"
+# CUDA のライブラリの在り処は env.sh が組み立てる（無いとモデルの
+# 読み込みだけ成功して推論で落ちる）。
+start asr  env LD_LIBRARY_PATH="$ASR_LD_LIBRARY_PATH" "$ASR_PYTHON" -u "$HERE/asr.py"
 
 echo
 echo "書き起こしは $LOG/asr.log と $LOG/transcript.jsonl に出る"

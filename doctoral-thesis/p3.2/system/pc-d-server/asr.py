@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """音声 -> 文字（faster-whisper）。将来の VLM の入力を作る。
 
-    PC-C/PC-B ── OME ──> audio_send.py ── TCP ──> ここ ──> 文字起こし
-
-**なぜ別プロセスなのか。** 受信側（audio_send.py）は GStreamer が要るので
-システムの Python 3.8 でしか動かない（`python3-gi` は focal では 3.8 用しか
-無い）。一方 faster-whisper は 3.8 に入らない（実測でビルドが失敗する）。
-そこで、**GStreamer が要る側と、GPU が要る側を分けて**、間を 16 kHz 単声道
-PCM の TCP で繋いでいる。こちら側は pip だけで完結し、GStreamer にも ROS にも
-依存しない ── 将来 OS の新しい機械へ移すときは、この側はそのまま動く。
+    PC-C/PC-B ── OME ──> ここ（受信も文字起こしも 1 プロセス）──> 書き起こし
 
 **VLM はこのファイルの `Transcriber` を import して使う想定。**
 `text(seconds)` が「直近 N 秒の書き起こし」を返すので、それをプロンプトに
 入れる。実装が済むまでの間は、このファイル単体を動かして
 （`run.sh` がそうする）経路が生きていることを確認できる。
+
+以前は「GStreamer が要る受信側」と「GPU が要る文字起こし側」を別プロセスに
+分け、間を TCP で繋いでいた ── focal の `python3-gi` が 3.8 用しか無く、
+faster-whisper が 3.8 に入らなかったため。pyenv でビルドした素の
+Python 3.10 に PyGObject を入れることで、**同じ Python で両方が動くように
+なった**ので 1 本にまとめてある。gi(webrtcbin) と CUDA を同一プロセスで
+同時に働かせても落ちないことは実測で確かめた（受信 9,076 buf と推論
+1,018 回を 3 分間同時に回して無事）。
 
 ## 窓の取り方（2 つあり、別物として設定する）
 
@@ -36,16 +37,19 @@ PCM の TCP で繋いでいる。こちら側は pip だけで完結し、GStrea
 
 import json
 import os
-import socket
 import sys
 import threading
 import time
 from collections import deque
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# 電文の形と音声の形は audio_send.py と共有する。**ここに書き直さないこと**
-# ── 別々の Python で動く 2 本なので、片方だけ直すと黙って食い違う。
-from asr_protocol import HEADER, MAGIC, RATE  # noqa: E402
+from recv_ome import OmeInputs  # noqa: E402
+
+# whisper の入力仕様。**設定ではないので config.env には置かない**
+# （変えるとモデルが正しく動かない）。gst にこの形へ変換させて受ける。
+RATE = 16000
+CHANNELS = 1
+CAPS = f"audio/x-raw,format=S16LE,rate={RATE},channels={CHANNELS}"
 
 FRAME_MS = 20                         # VAD をかける粒度（内部の刻み。設定ではない）
 
@@ -175,7 +179,7 @@ class Transcriber:
     """音声を受けて、直近の書き起こしを持つ。**VLM はこれを import して使う。**
 
         tr = Transcriber()
-        ...                                   # feed() は audio_send からの受信側が呼ぶ
+        ...                                   # feed() は受信スレッドが呼ぶ
         prompt_part = tr.text()               # 直近 ASR_CONTEXT_SEC 秒
     """
 
@@ -295,60 +299,9 @@ class Transcriber:
         return u
 
 
-def serve(transcriber, port):
-    """audio_send.py からの PCM を受けて transcriber に流す。
-
-    1 接続 1 セッション。送出側が落ちても listen は続けるので、
-    audio_send.py だけを再起動できる。
-    """
-    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(("127.0.0.1", port))
-    srv.listen(1)
-    log("INFO", f"音声を待つ: tcp://127.0.0.1:{port}")
-
-    while True:
-        conn, addr = srv.accept()
-        log("INFO", f"音声の送出元が繋がった: {addr}")
-        conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        try:
-            _read_frames(conn, transcriber)
-        except Exception as e:
-            log("WARN", f"接続が切れた: {e}")
-        finally:
-            conn.close()
-            log("INFO", "次の接続を待つ")
-
-
-def _recv_exact(conn, n):
-    buf = b""
-    while len(buf) < n:
-        chunk = conn.recv(n - len(buf))
-        if not chunk:
-            return None
-        buf += chunk
-    return buf
-
-
-def _read_frames(conn, transcriber):
-    while True:
-        head = _recv_exact(conn, HEADER.size)
-        if head is None:
-            return
-        magic, slen, unix_ns, nbytes = HEADER.unpack(head)
-        if magic != MAGIC:
-            raise ValueError(f"同期がずれた（magic={magic!r}）")
-        source = _recv_exact(conn, slen)
-        pcm = _recv_exact(conn, nbytes)
-        if source is None or pcm is None:
-            return
-        transcriber.feed(source.decode(), pcm, unix_ns)
-
-
 def main():
     import signal
 
-    port = int(env("ASR_PORT"))
     here = os.path.dirname(os.path.abspath(__file__))
     jsonl = os.path.join(here, "log", "transcript.jsonl")
     os.makedirs(os.path.dirname(jsonl), exist_ok=True)
@@ -362,6 +315,33 @@ def main():
 
     tr = Transcriber(on_utterance=_append)
 
+    # 音声 2 本だけ受ける。映像はいま使わないので繋がない（無駄に復号しない）。
+    # **16 kHz 単声道への変換は gst にやらせる**（CAPS）。whisper の入力が
+    # その形なので、ここで揃えれば Python 側の resample が丸ごと要らない。
+    inp = OmeInputs(only=["mic", "operator"], audio_caps=CAPS,
+                    logger=lambda lv, m: log(lv.upper(), m))
+
+    # 届いた形を音源ごとに 1 回だけ確かめる。レートが違っても例外は出ず、
+    # **whisper が別の速さの音として読んだ「それらしい文字」が出る**という
+    # 形で外れるので、気付けない。
+    ok_by_key = {}
+
+    def on_audio(key, a):
+        ok = ok_by_key.get(key)
+        if ok is None:
+            ok = (a.rate == RATE and a.channels == CHANNELS)
+            ok_by_key[key] = ok
+            if ok:
+                log("INFO", f"{key}: {a.rate} Hz {a.channels}ch を確認")
+            else:
+                log("ERROR", f"{key}: {a.rate} Hz {a.channels}ch で届いている。"
+                             f"{RATE} Hz {CHANNELS}ch のはず ── audio_caps が"
+                             f"効いていない。**この音源は使わない**")
+        if ok:
+            tr.feed(key, a.data, a.unix_ns)
+
+    inp.add_audio_sink(on_audio)
+
     def _bye(signum, _frame):
         log("INFO", f"signal {signum} を受けた。終了する")
         os._exit(0)
@@ -369,15 +349,17 @@ def main():
     signal.signal(signal.SIGTERM, _bye)
     signal.signal(signal.SIGINT, _bye)
 
-    def _report():
-        while True:
-            time.sleep(30.0)
-            n = len(tr.recent())
-            log("INFO", f"直近 {tr.context_sec:.0f}s の発話 {n} 件 / "
-                        f"累計 {tr.n_seg} 区間・GPU {tr.busy_sec:.1f}s")
-    threading.Thread(target=_report, daemon=True).start()
+    inp.start()
+    log("INFO", "音声 2 本を OME から受けて文字にする")
 
-    serve(tr, port)
+    while True:
+        time.sleep(30.0)
+        st = inp.stats()
+        got = " ".join(
+            f"{k}={st[k]['audio']}" for k in ("mic", "operator") if k in st)
+        log("INFO", f"受信 {got} / 直近 {tr.context_sec:.0f}s の発話 "
+                    f"{len(tr.recent())} 件 / 累計 {tr.n_seg} 区間・"
+                    f"GPU {tr.busy_sec:.1f}s")
 
 
 if __name__ == "__main__":

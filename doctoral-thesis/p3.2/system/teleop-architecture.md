@@ -110,9 +110,9 @@ VLM を繋いだあとに調整するのは後者だけ。
 
 映像は文字にせず、フレームのまま VLM に渡す（音響マップも同じ）。
 
-実装は 2 プロセスに分かれている。受信は GStreamer が要るのでシステムの
-Python、文字起こしは faster-whisper が要るので別の Python。詳細と、
-将来 1 つにまとめる条件は `pc-d-server/README.md`。
+受信も文字起こしも 1 プロセス（`pc-d-server/asr.py`）。GStreamer と
+faster-whisper が同居できる Python を用意する必要があり、その条件は
+`pc-d-server/README.md` の「環境を作る」にある。
 
 ### 4.3 出力
 

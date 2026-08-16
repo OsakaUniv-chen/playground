@@ -11,9 +11,8 @@ PC-C とは Tailscale で繋がる（§0.1）。
 は未実装で、その入力を先に用意してある状態。
 
 ```
-OME ──> audio_send.py ──TCP──> asr.py ──> 書き起こし ──> （将来）VLM ──> 頭部指令
-        Python 3.8              Python 3.10
-        GStreamer が要る側       GPU が要る側
+OME ──> asr.py ──> 書き起こし ──> （将来）VLM ──> 頭部指令
+        受信も文字起こしも 1 プロセス（Python 3.10 + GStreamer + CUDA）
 ```
 
 ## 1. フォルダを置く
@@ -37,67 +36,70 @@ rsync -a --exclude __pycache__ --exclude log common pc-d-server chen@<PC-D の t
 
 ## 2. 環境を作る
 
-**Python が 2 つ要る。** 1 つで済ませられないのは次の理由:
+**要るのは Python 1 つだけ**だが、その 1 つに条件がある ── **PyGObject
+（GStreamer）と faster-whisper の両方が入り、かつ system の GStreamer
+1.16.3 を掴むこと。** この機械で試した 3 つのうち、通ったのは 3 番目だけ:
 
-| | 何が要る | なぜ分けるか |
-|---|---|---|
-| `audio_send.py` | `gi`（GStreamer） | focal の `python3-gi` は **3.8 用しか無い**。3.10 からは import できない |
-| `asr.py` | faster-whisper | **3.8 には入らない**（実測でビルドが失敗する） |
+| Python | 結果 |
+|---|---|
+| システムの 3.8 | faster-whisper が**入らない**（後端のビルドが失敗する） |
+| anaconda の 3.10 | PyGObject は入るが、**anaconda 自前の GStreamer 1.14.1 を掴む**。そちらには `nicesrc` も `webrtcbin` も無く OME から受けられない。`GI_TYPELIB_PATH` と `LD_LIBRARY_PATH` で system 側へ向けようとしても、anaconda の RPATH が優先されて効かない |
+| **pyenv でビルドした 3.10** | **これを使う。** 素の CPython なので system のライブラリをそのまま掴む（GStreamer 1.16.3・nicesrc・webrtcbin いずれも有り） |
 
-間は 16 kHz 単声道 PCM の localhost TCP で繋ぐ。OS の新しい機械へ移して
-両方が同じ Python で動くようになったら、この 1 本は落とせる。
+### 2.1 GStreamer 側（システムに入っているもの）
 
-**2 本が共有する取り決めは `asr_protocol.py` にだけ書く**（電文の形と
-16 kHz 単声道）。別々の Python で動くので、各ファイルに値を書くと片方だけ
-直したときに黙って食い違い、**音は流れ続けたまま whisper が別の速さで読んだ
-「それらしい文字」が出る**という形で外れる。なお **16 kHz は whisper の
-入力仕様であって設定項目ではない**ので、`config.env` には置いていない
-（現場で動かす値 ── モデル・言語・窓 ── は `config.env` の `ASR_*`）。
-`asr_protocol.py` は受信側が 3.8 なので、**3.8 で読める範囲に保つこと。**
-
-### 2.1 受信側（システムの python3）
-
-**導入済み。共有機なので環境は変えない。** Ubuntu 20.04 / Python 3.8 /
-GStreamer **1.16.3**（PC-C の 1.20 より古く、`webrtcbin` の `latency` は
-1.18 から ── `ome_receiver.py` はプロパティの有無を見てから設定する）。
+**共有機なので system は変えない。** Ubuntu 20.04 / GStreamer **1.16.3**
+（PC-C の 1.20 より古く、`webrtcbin` の `latency` は 1.18 から ──
+`ome_receiver.py` はプロパティの有無を見てから設定する）。venv の
+PyGObject はこの system 側の GStreamer と typelib をそのまま使う
+（typelib は Python の版に依らない共有データ）。
 
 ```bash
 sudo apt install gir1.2-gst-plugins-bad-1.0 gstreamer1.0-nice   # 導入済み
-python3 -c "import gi, numpy; print('OK')"
 gst-inspect-1.0 nicesrc >/dev/null && echo "nice OK"
 ```
 
 **`gstreamer1.0-nice` は OME からの受信に必須。** 無いと警告だけ出して
 `create-answer` が黙って失敗する（理由は [../README.md](../README.md) §1.3）。
 
-### 2.2 文字起こし側（Python 3.10 の venv）
+### 2.2 Python 3.10 の venv
 
-新しい機械に移すときはこの節だけをやり直す。**sudo は要らない。**
+新しい機械に移すときはこの節をやり直す。**sudo が要るのは
+`libgirepository1.0-dev`（PyGObject のビルドに要る）だけ。**
 
 ```bash
-# 3.10 の入手先。この機械では anaconda3 に 3.10.9 が入っているのでそれを使う
-# （conda の環境は作らない ── venv を 1 つ置くだけで、共有の base を汚さない）
-~/anaconda3/bin/python -m venv ~/p32/venv-asr
-~/p32/venv-asr/bin/pip install --upgrade pip setuptools wheel
-~/p32/venv-asr/bin/pip install faster-whisper
+sudo apt install libgirepository1.0-dev          # 済んでいれば不要
+
+pyenv install 3.10.21                            # 素の CPython。anaconda 不可
+~/.pyenv/versions/3.10.21/bin/python -m venv ~/p32/venv310
+~/p32/venv310/bin/pip install --upgrade pip setuptools wheel
+
+# GStreamer の binding。focal の girepository は 1.x なので 3.50 未満を選ぶ
+# （3.50 以降は girepository-2.0 を要求してビルドに失敗する）
+~/p32/venv310/bin/pip install "PyGObject<3.50"
+
+~/p32/venv310/bin/pip install faster-whisper
 
 # **CUDA 12 のランタイムを pip で入れる。** ctranslate2 4.x は CUDA 12 を
 # 要求するが、この機械のシステム CUDA は 11.0/11.1。入れないと
 # 「モデルの読み込みだけ成功して推論で libcublas.so.12 not found」になる
 # ── 起動直後は正常に見えるので気付きにくい。
-~/p32/venv-asr/bin/pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+~/p32/venv310/bin/pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 ```
 
-`LD_LIBRARY_PATH` は `env.sh` が組み立てて、`run.sh` が **asr プロセスにだけ**
-渡す（受信側は GStreamer なので、その loader に CUDA を混ぜない）。
-
-確認:
+`LD_LIBRARY_PATH` は `env.sh` が組み立てて `run.sh` が渡す。確認:
 
 ```bash
 source env.sh
 LD_LIBRARY_PATH="$ASR_LD_LIBRARY_PATH" "$ASR_PYTHON" -c "
-import ctranslate2; print('CUDA devices', ctranslate2.get_cuda_device_count())"
+import ctranslate2, gi; gi.require_version('Gst','1.0')
+from gi.repository import Gst; Gst.init(None)
+print('CUDA', ctranslate2.get_cuda_device_count(), '/', Gst.version_string())
+print('nicesrc', Gst.ElementFactory.make('nicesrc') is not None)"
 ```
+
+**`GStreamer 1.16.3` と `nicesrc True` が出ること。** 1.14.1 が出たら
+anaconda の GStreamer を掴んでいる（venv の作り元を間違えている）。
 
 ### 2.3 この機械での実測（3090）
 
@@ -107,6 +109,7 @@ import ctranslate2; print('CUDA devices', ctranslate2.get_cuda_device_count())"
 | VRAM | **2.5 GB**（24 GB のうち。large-v3 でも余裕はある） |
 | 速度 | 11 秒の音声を 0.26 秒 = **43x 実時間**。3.5 秒の発話で 0.38 秒 |
 | 初回起動 | モデルの取得に 2 分ほど。2 回目以降は 1.2 秒 |
+| **gi と CUDA の同居** | webrtcbin で受けながら推論を回し続けて 3 分（受信 9,076 buf・推論 1,018 回）。落ちない |
 
 `config.env` の `ASR_MODEL` を変えれば `large-v3` にも `small` にも振れる。
 **GPU を VLM と分け合うようになったら**、ここを落とすか `ASR_DEVICE=cpu`
@@ -129,7 +132,7 @@ tailnet へ発起できないため、signalling も頭部指令も通らない�
 
 ```bash
 cd ~/p32/pc-d-server
-./run.sh              # asr + audio_send
+./run.sh              # OME から受けて文字にする（1 プロセス）
 ./run.sh status       # 生きているか      ./run.sh stop で停止
 ```
 
@@ -224,7 +227,7 @@ a = inp.latest_audio("mic")         # "mic" | "operator"
 
 **音声だけは例外で、連続で要る。** 落ちたぶんの発話が丸ごと消えては
 文字起こしにならないので、`add_audio_sink(fn)` で全バッファを受け取れる
-（`audio_send.py` がそうしている）。
+（`asr.py` の main がそうしている）。
 
 音響マップは **64×64 のまま**届く。拡大が要るなら受け側の前処理でやる
 （送出側で引き伸ばしても情報量は増えない ── 設計 §3.1）。
