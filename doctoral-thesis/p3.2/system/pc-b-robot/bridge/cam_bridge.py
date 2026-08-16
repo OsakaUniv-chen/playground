@@ -16,6 +16,8 @@ onboard_mic_bridge.py が持つ。PC-D が音声だけを取り出せるよう�
 """
 
 import array
+import glob
+import os
 
 import gi
 
@@ -24,6 +26,57 @@ from gi.repository import Gst  # noqa: E402
 
 from gst_ros_common import (GstBridgeNode, env, env_bool, env_int, robot_ns,  # noqa: E402
                             run)
+
+_V4L_SYSFS = "/sys/class/video4linux"
+
+
+def _v4l2_nodes():
+    """今ある v4l2 ノードを [(/dev/videoN, カード名, index), ...] で返す。"""
+    out = []
+    for d in glob.glob(f"{_V4L_SYSFS}/video*"):
+        base = os.path.basename(d)
+        try:
+            with open(os.path.join(d, "name")) as f:
+                name = f.read().strip()
+            with open(os.path.join(d, "index")) as f:
+                index = int(f.read().strip())
+        except (OSError, ValueError):
+            continue
+        out.append((f"/dev/{base}", name, index))
+    return sorted(out, key=lambda t: int(t[0].rsplit("video", 1)[1]))
+
+
+def resolve_cam_device(spec):
+    """`CAM_DEVICE` を実際の `/dev/videoN` に解決する。
+
+    **`/` で始まればそのまま使い、そうでなければカメラの名前として探す。**
+    `/dev/videoN` の番号は USB の列挙順で決まるので、機体に挿し直したり
+    他の USB 機器を足したりするだけでずれる。名前で引けば固定される
+    （UMA16v2 を `hw:CARD=UMA16v2` で指しているのと同じ考え方。V4L2 には
+    ALSA のような名前指定が無いので、ここで肩代わりする）。
+
+    **UVC カメラは 1 台で 2 ノード生える。** 映像の取り口と metadata 用で、
+    見分けるのは sysfs の `index`（取り口が 0、metadata が 1）。名前だけで
+    選ぶと metadata 側を掴んで caps 交渉に失敗することがあるので、
+    index=0 を優先する。
+    """
+    if spec.startswith("/"):
+        return spec
+
+    nodes = _v4l2_nodes()
+    named = [n for n in nodes if spec.lower() in n[1].lower()]
+    # index=0 が取り口。念のため、名前は合うのに index=0 が無いドライバでは
+    # 若い番号に落とす（掴み損ねて起動しないより、試して失敗するほうがよい）。
+    hit = [n for n in named if n[2] == 0] or named
+    if not hit:
+        listing = ", ".join(f"{d}={name!r}(index={i})" for d, name, i in nodes)
+        raise RuntimeError(
+            f"CAM_DEVICE={spec!r} という名前のカメラが見つからない。"
+            f"今あるのは: {listing or '（v4l2 デバイスが 1 つも無い）'}。"
+            f"名前は `ls /sys/class/video4linux/*/name | xargs cat` か "
+            f"`v4l2-ctl --list-devices` で確認する"
+        )
+    return hit[0][0]
 
 try:
     from foxglove_msgs.msg import CompressedVideo
@@ -164,8 +217,14 @@ class CamBridge(GstBridgeNode):
             # （OME の入口である RTMP が MJPG を運べない）。切り出しは復号後に
             # なるが、画素数が 44% 減るぶん符号化はむしろ軽くなる。
             dec, crop, enc, profile = self._transcode(sw, sh, w, h, fps, kbps, sw_enc)
+            spec = env("CAM_DEVICE")
+            dev = resolve_cam_device(spec)
+            # 名前で引いた場合はどれを掴んだかを残す。挿し替えで別のカメラに
+            # 化けていても、ログを見れば分かるようにするため。
+            if dev != spec:
+                self.get_logger().info(f"カメラ {spec!r} -> {dev}")
             vsrc = (
-                f"v4l2src device={env('CAM_DEVICE')} "
+                f"v4l2src device={dev} "
                 f"do-timestamp=true io-mode=2 "
                 f"! image/jpeg,width={sw},height={sh},framerate={fps}/1 "
                 f"! {dec} ! {crop}{enc} ! video/x-h264,profile={profile}"

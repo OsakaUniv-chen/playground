@@ -15,8 +15,7 @@
 |---|---|---|---|---|
 | `common/config.env` | `PC_C_IP` | `192.168.1.100` | PC-C で `ip a` | 全経路が繋がらない。**PC-B から OME へ送る先はここだけ** |
 | 〃 | `ONBOARD_MIC_CHANNELS` `_RATE` | 2ch / 48000 | `arecord -D <dev> --dump-hw-params` | 対応しない値だと caps 交渉に失敗してパイプラインが起動しない。用途は現場音を聞くことなので 16 kHz でも足りる |
-| `pc-b-robot/config.env` | `CAM_DEVICE` | `/dev/video0` | `ls -l /dev/v4l/by-path/` | `/dev/videoN` は起動順で変わるので **by-path か by-id を使う**。あわせて Xacti が MJPG 1920×1080@30 を出せるかを `v4l2-ctl --list-formats-ext` で見る |
-| 〃 | `ONBOARD_MIC_DEVICE` `SPEAKER_DEVICE` | `default` | `arecord -l` / `aplay -l` | 機体マイクとスピーカーが鳴らない |
+| `pc-b-robot/config.env` | `ONBOARD_MIC_DEVICE` `SPEAKER_DEVICE` | `default`（仮置き） | `arecord -l` / `aplay -l` | **機種が未定。** `default` はシステム既定のカードを指すので、USB を挿し替えると黙って別の機器に移る。決まったら `hw:CARD=<名前>` に固定する |
 | 〃 | `ARM_UP_DEG` `ARM_DOWN_DEG` | 0 / 45 度 | ボタンで上げ下げして「挙手」「下ろす」に見える角度に合わせる | 腕が中途半端な位置で止まる |
 | `pc-b-robot/config.env` | `ALI_MQTT_HOST` `_PORT` | `192.168.4.2:9075` | 下の rover_driver の節 | 台車が動かない |
 | 〃 | `ADDR_HEAD_*` `ADDR_*_ARM` | boxie_node の実機値 | `sudo hcitool lescan` | 該当のモータに繋がらない |
@@ -37,6 +36,19 @@ Xacti は **USB 2.0**（MJPG 1080p30 で 24〜40 Mbps）、UMA16v2 は 16ch 44.1
 **22.6 Mbps**。機体マイクも別に 1 本挿さる。どれも等時転送なので、**同じ
 コントローラにぶら下げると取り合う**（コマ落ち、録音の途切れ）。別々の口へ。
 `lsusb -t` で確認。
+
+### カメラの名前が本当に `CX-MT500` か（現地で 1 回だけ）
+
+`CAM_DEVICE=CX-MT500` は**名前**で、cam_bridge が
+`/sys/class/video4linux/*/name` を走査して `/dev/videoN` に解決する。この名前は
+uvcvideo が USB のプロダクト文字列から作るので、`Xacti CX-MT500` のように
+前後が付くことはあっても部分一致で拾える。**まったく別の文字列だった場合は
+起動時に「見つからない」と、今あるカメラ名を並べて落ちる**ので、そのログの
+名前をそのまま `CAM_DEVICE` に書けばよい。確認だけなら:
+
+```bash
+cat /sys/class/video4linux/*/name
+```
 
 ### 16ch の全 ch に信号が来るか（機体に載せた後にもう一度）
 

@@ -67,12 +67,53 @@ cd ~/ros2_ws && colcon build --packages-select p3_msgs
 
 ## 3. 設定を埋める
 
-★ の付いた項目を現地で確認して書く。確認方法は [../todo-list.md](../todo-list.md)。
+**ハードは自動では見つからない。** 名前で引くもの（そのままでよい）と、現地で
+調べて書くものがある。★ が付いているのが後者:
 
-| ファイル | 埋めるもの |
-|---|---|
-| `../common/config.env` | `PC_C_IP`（OME の居る PC-C）、`ONBOARD_MIC_RATE` / `ONBOARD_MIC_CHANNELS`（機体マイクが実際に対応するレート） |
-| `config.env` | `CAM_DEVICE`、`ONBOARD_MIC_DEVICE`、`SPEAKER_DEVICE`、`ALI_MQTT_HOST` / `ALI_MQTT_PORT`（台車）、`ADDR_*` ×5（Keigan の BLE アドレス）、`RECORD_DIR` |
+| 何 | 変数 | いま | 現地で |
+|---|---|---|---|
+| Xacti カメラ | `CAM_DEVICE` | `CX-MT500` | **そのまま。** 名前で `/dev/videoN` を解決する |
+| 16ch アレイ | `MIC_ARRAY_DEVICE` | `hw:CARD=UMA16v2,DEV=0` | **そのまま。** ALSA のカード名指定 |
+| Keigan モータ ×5 | `ADDR_*` | 実機の BLE MAC | 交換したときだけ直す |
+| 機体マイク / スピーカー ★ | `ONBOARD_MIC_DEVICE` `SPEAKER_DEVICE` | `default`（**仮置き**） | 機種が決まったら `hw:CARD=<名前>` に |
+| 〃 のレート ★ | `ONBOARD_MIC_RATE` `_CHANNELS` | 2ch / 48000 | 実機が対応する値に |
+| Keigan ALI（台車）★ | `ALI_MQTT_HOST` `_PORT` | 沿用元の値 | **現場ごとに変わる** |
+| OME の在り処 ★ | `PC_C_IP` | `192.168.1.100` | PC-C で `ip -4 -o a` |
+
+レートとデバイス名は `../common/config.env`、残りは `config.env`。各行の
+すぐ上に、その値の調べ方と外したときの症状をコメントで書いてある。
+
+### 調べるコマンド
+
+```bash
+# カメラ ── 名前に CX-MT500 が入っていれば CAM_DEVICE はそのままでよい
+cat /sys/class/video4linux/*/name
+v4l2-ctl --list-devices                       # MJPG 1920x1080@30 が出るかも見る
+v4l2-ctl -d /dev/videoN --list-formats-ext
+
+# 機体マイク / スピーカー ── `card N:` の直後の短い名前が hw:CARD= に書く値
+arecord -l          # 録音側
+aplay -l            # 再生側
+arecord -D hw:CARD=<名前>,DEV=0 --dump-hw-params   # 対応レートと ch 数
+
+# 16ch アレイ（UMA16v2 と出れば OK）
+arecord -l | grep -i uma
+
+# Keigan モータの BLE アドレス
+sudo hcitool lescan
+
+# 台車（ALI）── broker に届くか、指令が流れるか
+ping <ALI の IP>
+nc -vz <ALI の IP> 9075
+mosquitto_sub -h <ALI の IP> -p 9075 -t 'control/#' -v   # スティックを倒すと出る
+```
+
+`mosquitto_sub` だけ別パッケージ（`sudo apt install mosquitto-clients`）。
+台車の経路を疑うときにしか使わないので、§2 の必須には入れていない。
+
+**USB の口を分けること。** Xacti（MJPG 1080p30 で 24〜40 Mbps）も UMA16v2
+（22.6 Mbps）も等時転送なので、同じコントローラにぶら下げると取り合って
+コマ落ちと録音の途切れが出る。`lsusb -t` で別系統か確認する。
 
 **実機かフェイクかは `../common/config.env` の `USE_FAKE_SOURCES` だけで決まる。**
 起動コマンド（§4）はどちらでも同じで、何も足さない。
