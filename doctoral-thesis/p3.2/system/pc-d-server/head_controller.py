@@ -115,26 +115,23 @@ class HeadClient:
 class HeadController:
     """頭部の目標角を決めて送る。
 
-    **角度の持ち方に 1 つだけ約束がある。** マップも映像も**頭部に載った**
-    センサから来るので、そこから読める向きは「いまの頭からの相対」。
-    一方 `head/command` は**絶対角**（起動時の姿勢が 0）。したがって
+    **角度はすべて絶対角。足し込みは無い。** 16ch アレイとカメラは機体に
+    固定されていて頭とは一緒に動かないので、音響マップの中心は常に機体の
+    正面 ── 頭がどこを向いていてもマップの見え方は変わらない。したがって
+    マップから読んだ角度はそのまま目標にできる（`soundmap_geometry.py`）。
 
-        次の絶対角 = いまの絶対角 + 相対角
-
-    で、`いまの絶対角` は **PC-D が自分で覚えておく**しかない ── PC-B は
-    モータの読み戻しをしない（BLE の帯域。設計 §5.1）。`self.pitch` /
-    `self.yaw` がその控え。`publish_goal` を通せば自動で更新される。
+    校正は 1 つだけ、**アレイの正面と頭の 0 度のずれ**。頭の 0 度は
+    起動時の姿勢なので、機体に組んでから実測して config.env の
+    `HEAD_MOUNT_YAW_DEG` / `HEAD_MOUNT_PITCH_DEG` に入れる。固定の
+    オフセットなので、溜まっていく類の誤差にはならない。
     """
 
     def __init__(self):
         self.client = HeadClient()
         self._last_goal = None
-        # いま出している絶対角（起動時の姿勢が 0）。実際のモータは PC-B の
-        # smoothing で遅れて追いつくので、**これは「目標」であって
-        # 「現在値」ではない**。次の判断まで待つ根拠は decide() を参照。
-        self.pitch = 0.0
-        self.yaw = 0.0
-        self.t_last_goal = 0.0
+        # アレイの正面 -> 頭の 0 度 のずれ。実機で測って config.env に入れる。
+        self.mount_yaw = float(os.environ.get("HEAD_MOUNT_YAW_DEG", 0.0))
+        self.mount_pitch = float(os.environ.get("HEAD_MOUNT_PITCH_DEG", 0.0))
 
     def publish_goal(self, pitch_deg, yaw_deg, roll_deg=0):
         """[pitch, yaw, roll] を度で送る。**値が変わったときだけ送る。**
@@ -151,55 +148,40 @@ class HeadController:
         if goal == self._last_goal:
             return
         self._last_goal = goal
-        self.pitch, self.yaw = goal[0], goal[1]
-        self.t_last_goal = time.monotonic()
         self.client.send(*goal)
 
-    def look_relative(self, d_yaw_deg, d_pitch_deg):
-        """**いまの頭から見た相対角**で指示する。
+    def look_at(self, yaw_deg, pitch_deg):
+        """**アレイ座標での絶対角**で指示する。取り付けのずれはここで足す。
 
-        マップや映像から読めるのはこちら（頭に載ったセンサなので）。
-        絶対角への足し込みと控えの更新はここでやる。
+        `decide()` が返すのはこの座標の角。前の指令に足し込まないこと
+        （マップは機体固定なので、頭がどこを向いていても中心は変わらない）。
         """
-        self.publish_goal(self.pitch + d_pitch_deg, self.yaw + d_yaw_deg)
-
-    def settled(self, margin_sec=0.5):
-        """前の指令に頭が追いついたか。
-
-        PC-B は EMA（既定 alpha=0.25 @10 Hz、時定数 0.35 s）で寄せるので、
-        可動域いっぱいでも約 1.5 秒で収まる。**落ち着く前に次の相対角を
-        足すと、まだ動いている途中の姿勢を「いまの角度」とみなすことに
-        なり、ずれが足し算で溜まる。**
-        """
-        return time.monotonic() - self.t_last_goal > (1.5 + margin_sec)
+        self.publish_goal(pitch_deg + self.mount_pitch, yaw_deg + self.mount_yaw)
 
     # ---- ここから先が本体。未実装 ----
 
     def decide(self, image, acoustic_map, transcript):
-        """場面から「誰に向くか」を決める。**戻り値は相対角 (d_yaw, d_pitch)。**
+        """場面から「誰に向くか」を決める。**戻り値は絶対角 (yaw, pitch)。**
 
-        入力は 3 系統そろっている:
+        入力は 3 系統そろっている（いずれも機体固定のセンサ）:
 
-            inp.latest_video("stream")     場面（頭部のカメラ）
+            inp.latest_video("stream")     場面（200 度の広角。首は振らない）
             inp.latest_video("soundmap")   誰が鳴っているか（64x64）
             asr.Transcriber.text()         直近 ASR_CONTEXT_SEC 秒の発話
 
         呼び出し側の骨格:
 
             while True:
-                if not head.settled():          # 前の指令が収まるまで待つ
-                    time.sleep(0.1); continue
                 f  = inp.latest_video("stream")
                 sm = inp.latest_video("soundmap")
                 if f is None or f.age_sec() > 0.5:
-                    continue                    # 古い画では判断しない
+                    time.sleep(0.1); continue   # 古い画では判断しない
                 d = head.decide(f.array(), sm.array(), tr.text())
                 if d is not None:
-                    head.look_relative(*d)
+                    head.look_at(*d)            # 同値なら送られない
 
-        **戻り値を絶対角にしないこと。** マップも映像も頭部に載った
-        センサから来るので、そこから読めるのは相対角しかない
-        （soundmap_geometry.py 冒頭）。
+        **前の指令に足し込まないこと。** センサは機体に固定で、頭が動いても
+        マップの中心は動かない（soundmap_geometry.py 冒頭）。
 
         決めていないのは次の 3 つ:
 
@@ -209,9 +191,12 @@ class HeadController:
            読めているが、あれは方向 4 クラスの分類。ここは連続角なので、
            **前段で角度に直して「右 33 度から声」と渡すほうが素直**
            （マップの分解能は 64x64 = 約 2.8 度/画素しか無い）。
-        2. **推論周期。** 上の骨格だと「頭が落ち着いてから次」なので
-           最短でも 1.5 秒に 1 回。VLM の推論時間がこれより長ければ
-           そちらが律速になる。
+        2. **推論周期。** 絶対角なので、前の動きが終わる前に次を出しても
+           ずれは溜まらない（PC-B の EMA が新しい目標へ寄せ直すだけ）。
+           決め手は見た目のほうで、収まる前に何度も目標を変えると首が
+           落ち着かない ── PC-B 側の収束が約 1.5 秒なので、その程度より
+           速く判断を変える意味は薄い。実際には VLM の推論時間が
+           律速になる公算が大きい。
         3. **向く相手が居ないときの振る舞い。** 正面へ戻すのか、
            そのまま保つのか。回線が切れたときの扱いと合わせて決める
            （todo-list の「回線が切れたときの頭部の挙動」）。
