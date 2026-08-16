@@ -20,7 +20,7 @@
 | `pc-b-robot/config.env` | `ALI_MQTT_HOST` `_PORT` | `192.168.4.2:9075` | 下の rover_driver の節 | 台車が動かない |
 | 〃 | `ADDR_HEAD_*` `ADDR_*_ARM` | boxie_node の実機値 | `sudo hcitool lescan` | 該当のモータに繋がらない |
 | 〃 | `RECORD_DIR` | `~/p32/rosbags` | `df -h` | **10.2 GB/時**（16ch 5.1 + 映像 3.6）。収録予定時間ぶんの空きが要る |
-| `pc-c-operator/config.env` | `OPERATOR_MIC_DEVICE` | `default` | `arecord -l` | 操作者の声が出ない |
+| `pc-c-operator/config.env` | `OPERATOR_MIC_DEVICE` | `default`（仮置き） | `arecord -l` | **内蔵マイク（ALC285 Analog）が選ばれてしまう。** ヘッドセットの機種が決まったら `hw:CARD=<名前>` に固定する（PC-B の機体マイクと同じ理由） |
 
 映像パラメータ（1920×1080 / 30 fps）と 16ch アレイのパラメータは実機で確認済み。
 `OPERATOR_MIC_RATE` は調整不要（記録時のレート。伝送は `OPERATOR_MIC_SEND_RATE`

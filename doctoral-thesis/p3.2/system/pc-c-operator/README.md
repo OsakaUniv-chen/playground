@@ -12,31 +12,49 @@ OME に集まり、PC-D は Tailscale 越しにここだけを見る。
 
 ## 起動
 
+現地でやることはこの 4 つ。
+
 ```bash
-./run.sh              # UI + マイク送出 + 頭部指令の中継
-./run.sh status       # 生きているか      ./run.sh stop で停止
+# 1. 3 プロセス（UI・マイク送出・頭部指令の中継）を上げる
+./run.sh
+
+# 2. 本機のブラウザで開く
+#      http://localhost:7779/
+# 3. ゲームパッドのボタンを 1 回押す
+# 4. PC-B を起動する（→ ../pc-b-robot/README.md）
 ```
 
-`run.sh` が中で `env.sh` を読むので `source` は要らない。**PC-B より先に
-立てる**（設計 §0.2）。
+**OME を起動する操作は無い**（下の「OME」）。`./run.sh status` で生死、
+`./run.sh stop` で停止。`run.sh` が中で `env.sh` を読むので `source` は要らない。
 
-**OME を起動する操作は要らない。** この機械で systemd 常駐かつ `enabled`
-なので、電源を入れた時点で上がっている。`run.sh` も触らない。見るだけ:
+**4 の順序だけは守る。** OME が立っていない状態で PC-B を上げると送出先が
+無い（設計 §0.2）。1〜3 の間の順序は自由。
+
+### 2 と 3 について
+
+**同一機の `localhost` から開くこと。** Gamepad API とマイク取得は secure
+context を要求し、`http://localhost` はそれを満たす。別の機械からは開けない
+（UI は 127.0.0.1 にしか出していない）。
+
+**ゲームパッドは挿すだけでは認識されない。** 指紋採取を防ぐため、Gamepad API
+はページに焦点がある状態で 1 回操作されるまでパッドを見せず、
+`gamepadconnected` も飛ばない。
+
+- **挿す時期はいつでもよい** ── 電源を入れる前でも、`./run.sh` の前でも、
+  ページを開いた後でも同じ。OS 側では最初から見えている（`/dev/input/js*`）
+- **ページを読み込むたびに 1 回押す** ── リロードすると押し直しが要る
+- 認識できると console に `Gamepad connected: <型番>` が出る
+
+### OME
+
+**起動する操作は要らない。** この機械で systemd 常駐かつ `enabled` なので、
+電源を入れた時点で上がっている。`run.sh` も触らない。見るだけ:
 
 ```bash
 systemctl is-active ovenmediaengine
 ```
 
-`./run.sh` の後に、**本機のブラウザで `http://localhost:7779/`** を開き、
-**ゲームパッドのボタンを 1 回押す。**
-
-押すまで認識されないのはブラウザの仕様。指紋採取を防ぐため、Gamepad API は
-ページに焦点がある状態で操作されるまでパッドを見せず、`gamepadconnected` も
-飛ばない。**挿すだけでは駄目**（挿す順は前後どちらでもよい）。認識できたら
-console に `Gamepad connected: <型番>` が出る。
-
-つまり現地でやることは **`./run.sh` → ブラウザを開く → パッドを 1 回押す**
-の 3 つで、その後に PC-B を起動する。
+### 動かないとき
 
 ログは `log/<名前>.log`（`ui` / `mic` / `relay`）。`./run.sh status` が
 「死んでいる」と言ったらそこを見る。1 本だけ直しながら動かすなら
@@ -48,6 +66,11 @@ console に `Gamepad connected: <型番>` が出る。
 `HEAD_RELAY_BIND`。`../common/config.env` に `PC_C_IP`（この機械の LAN
 アドレス。PC-B が RTMP を投げる先）。
 
+- `OPERATOR_MIC_DEVICE` ★ は **`default` のままにしない。** 内蔵マイク
+  （ALC285 Analog）が選ばれてしまう。ヘッドセットを挿して `arecord -l` の
+  `card N:` の直後の名前を読み、`hw:CARD=<名前>,DEV=0` で固定する
+  （PC-B の機体マイクと同じやり方。理由は `config.env` に書いてある）。
+  **マイクは常時オン**なので、`./run.sh` を上げた時点から声は機体へ流れる
 - `HEAD_RELAY_BIND` は **tailscale のアドレス**（`tailscale ip -4`）。PC-D から
   届く必要がある
 - `USE_FAKE_SOURCES` は PC-C にも効く。`1` にすると `operator_mic_send.py` が
