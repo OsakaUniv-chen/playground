@@ -37,15 +37,17 @@ PCM の TCP で繋いでいる。こちら側は pip だけで完結し、GStrea
 import json
 import os
 import socket
-import struct
+import sys
 import threading
 import time
 from collections import deque
 
-HEADER = struct.Struct("!4sBQI")      # magic, len(source), unix_ns, len(pcm)
-MAGIC = b"P32A"
-RATE = 16000                          # whisper の入力。audio_send.py と揃える
-FRAME_MS = 20                         # VAD をかける粒度
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 電文の形と音声の形は audio_send.py と共有する。**ここに書き直さないこと**
+# ── 別々の Python で動く 2 本なので、片方だけ直すと黙って食い違う。
+from asr_protocol import HEADER, MAGIC, RATE  # noqa: E402
+
+FRAME_MS = 20                         # VAD をかける粒度（内部の刻み。設定ではない）
 
 
 def env(k, d=None):

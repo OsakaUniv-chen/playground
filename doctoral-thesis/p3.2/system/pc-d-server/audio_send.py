@@ -20,7 +20,6 @@
 import os
 import signal
 import socket
-import struct
 import sys
 import time
 
@@ -28,12 +27,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 
 from recv_ome import OmeInputs, env  # noqa: E402
-
-HEADER = struct.Struct("!4sBQI")     # magic, len(source), unix_ns, len(pcm)
-MAGIC = b"P32A"
-# asr.py と同じ値であること。片方だけ変えると無音になる（音は流れるが
-# レートが合わず、whisper が別の速さの音として読む）。
-ASR_CAPS = "audio/x-raw,format=S16LE,rate=16000,channels=1"
+# 電文の形と音声の形は asr.py と共有する。**ここに書き直さないこと**
+# ── 別々の Python で動く 2 本なので、片方だけ直すと黙って食い違う。
+from asr_protocol import CAPS, CHANNELS, HEADER, MAGIC, RATE  # noqa: E402
 
 
 def log(level, text):
@@ -101,7 +97,7 @@ def main():
     link = AsrLink(port)
 
     # 音声 2 本だけ。映像はいま使わないので繋がない（無駄に復号しない）。
-    inp = OmeInputs(only=["mic", "operator"], audio_caps=ASR_CAPS,
+    inp = OmeInputs(only=["mic", "operator"], audio_caps=CAPS,
                     logger=lambda lv, m: log(lv.upper(), m))
 
     # **実際に届いた形を 1 回だけ確かめる。** asr.py は 16 kHz 単声道の
@@ -113,13 +109,13 @@ def main():
     def on_audio(key, a):
         ok = ok_by_key.get(key)
         if ok is None:                     # その音源の最初の 1 個だけ調べる
-            ok = (a.rate == 16000 and a.channels == 1)
+            ok = (a.rate == RATE and a.channels == CHANNELS)
             ok_by_key[key] = ok
             if ok:
                 log("INFO", f"{key}: {a.rate} Hz {a.channels}ch を確認")
             else:
                 log("ERROR", f"{key}: {a.rate} Hz {a.channels}ch で届いている。"
-                             f"16000 Hz 1ch のはず ── audio_caps が効いていない。"
+                             f"{RATE} Hz {CHANNELS}ch のはず ── audio_caps が効いていない。"
                              f"**この音源は送らない**（流すと壊れた文字起こしに"
                              f"なるだけで、エラーにはならない）")
         if not ok:
@@ -138,7 +134,7 @@ def main():
     signal.signal(signal.SIGINT, _bye)
 
     inp.start()
-    log("INFO", f"音声 2 本を asr へ中継する（{ASR_CAPS}）")
+    log("INFO", f"音声 2 本を asr へ中継する（{CAPS}）")
 
     while True:
         time.sleep(20.0)

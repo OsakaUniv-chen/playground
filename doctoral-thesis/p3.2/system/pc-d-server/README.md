@@ -47,6 +47,14 @@ rsync -a --exclude __pycache__ --exclude log common pc-d-server chen@<PC-D の t
 間は 16 kHz 単声道 PCM の localhost TCP で繋ぐ。OS の新しい機械へ移して
 両方が同じ Python で動くようになったら、この 1 本は落とせる。
 
+**2 本が共有する取り決めは `asr_protocol.py` にだけ書く**（電文の形と
+16 kHz 単声道）。別々の Python で動くので、各ファイルに値を書くと片方だけ
+直したときに黙って食い違い、**音は流れ続けたまま whisper が別の速さで読んだ
+「それらしい文字」が出る**という形で外れる。なお **16 kHz は whisper の
+入力仕様であって設定項目ではない**ので、`config.env` には置いていない
+（現場で動かす値 ── モデル・言語・窓 ── は `config.env` の `ASR_*`）。
+`asr_protocol.py` は受信側が 3.8 なので、**3.8 で読める範囲に保つこと。**
+
 ### 2.1 受信側（システムの python3）
 
 **導入済み。共有機なので環境は変えない。** Ubuntu 20.04 / Python 3.8 /
