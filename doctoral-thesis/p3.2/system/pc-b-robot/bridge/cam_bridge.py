@@ -55,10 +55,17 @@ def resolve_cam_device(spec):
     （UMA16v2 を `hw:CARD=UMA16v2` で指しているのと同じ考え方。V4L2 には
     ALSA のような名前指定が無いので、ここで肩代わりする）。
 
+    **やり方は沿用元の `camera_node.py`（`~/ros2_ws`、実績あり）と同じ。**
+    あちらは pyudev で `video4linux` を列挙して同じ sysfs の `name` を読み、
+    `split(':')[0]` を鍵に**同名のうち一番若い `/dev/videoN`** を採る。
+    ここで pyudev を使わないのは、読む先が同じ sysfs で依存を 1 つ増やす
+    だけだから。CX-MT500 の name は `CX-MT500: ...` の形なので、こちらは
+    部分一致にしてある（`Xacti CX-MT500` のように前に何か付いても拾える）。
+
     **UVC カメラは 1 台で 2 ノード生える。** 映像の取り口と metadata 用で、
-    見分けるのは sysfs の `index`（取り口が 0、metadata が 1）。名前だけで
-    選ぶと metadata 側を掴んで caps 交渉に失敗することがあるので、
-    index=0 を優先する。
+    名前だけで選ぶと metadata 側を掴んで caps 交渉に失敗することがある。
+    若い番号を採れば避けられる（沿用元が実績で示しているのがこれ）。その上で
+    sysfs の `index`（取り口が 0、metadata が 1）でも絞り、二重に外す。
     """
     if spec.startswith("/"):
         return spec
