@@ -72,6 +72,32 @@ class OperatorMicSender(Node):
         self.pipeline.set_state(Gst.State.PLAYING)
         self.get_logger().info(f"操作者マイク -> {rtmp.split(' ')[0]}")
 
+        # **bus を見ないと失敗が黙る。** set_state(PLAYING) はパイプラインが
+        # 実際に流れる前に返るので、OME がまだ立っていない・stream key が
+        # 違う・マイクが開けない、はすべて後から bus のエラーとして来る。
+        # 拾わないと「操作者が喋っているのに機体から声が出ないが、ログは
+        # 正常」という一番手間のかかる形になる。PC-B 側は
+        # bridge/gst_ros_common.py の GstBridgeNode が同じことをしている
+        # （こちらはその基底を使っていないので個別に持つ）。
+        self.bus = self.pipeline.get_bus()
+        self.create_timer(0.5, self._poll_bus)
+
+    _BUS_FILTER = (Gst.MessageType.ERROR | Gst.MessageType.EOS
+                   | Gst.MessageType.WARNING)
+
+    def _poll_bus(self):
+        msg = self.bus.timed_pop_filtered(0, self._BUS_FILTER)
+        while msg is not None:
+            if msg.type == Gst.MessageType.ERROR:
+                err, dbg = msg.parse_error()
+                self.get_logger().error(f"gst error: {err} | {dbg}")
+            elif msg.type == Gst.MessageType.WARNING:
+                err, dbg = msg.parse_warning()
+                self.get_logger().warn(f"gst warning: {err} | {dbg}")
+            elif msg.type == Gst.MessageType.EOS:
+                self.get_logger().error("gst EOS: マイクの経路が終了した")
+            msg = self.bus.timed_pop_filtered(0, self._BUS_FILTER)
+
     def destroy_node(self):
         self.pipeline.set_state(Gst.State.NULL)
         super().destroy_node()

@@ -74,8 +74,28 @@ class HeadRelay(Node):
                 self.peer = None
                 self.get_logger().info("PC-D が切れた。次の接続を待つ")
 
+    @staticmethod
+    def _enable_keepalive(conn):
+        """死んだ相手を TCP に検出させる。
+
+        **読み取りタイムアウトでは代用できない。** PC-D は
+        `head_controller.publish_goal` が**値の変わったときだけ**送るので、
+        何分も無音なのが正常。無音を切断とみなすと誤検出になる。
+
+        入れないとどうなるか: PC-D が落ちる・再起動する・tailscale の経路が
+        張り替わると TCP が半開きのまま残り、`recv` が永久に返らない。
+        `_accept_loop` はこの接続に張り付いたままなので、PC-D が繋ぎ直しに
+        来ても backlog で待たされ、**頭部指令が両側とも無言のまま止まる。**
+        keepalive なら 30s 無音 + 10s × 3 回の失敗で切れて次の接続へ進む。
+        """
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        for opt, val in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 10), ("TCP_KEEPCNT", 3)):
+            if hasattr(socket, opt):        # Linux 以外には無いものがある
+                conn.setsockopt(socket.IPPROTO_TCP, getattr(socket, opt), val)
+
     def _serve(self, conn):
         conn.settimeout(None)
+        self._enable_keepalive(conn)
         buf = b""
         while True:
             chunk = conn.recv(4096)

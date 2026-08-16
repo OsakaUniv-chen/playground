@@ -125,8 +125,15 @@ def main():
 
     # TLS 無し。ブラウザは同一機から http://localhost:PORT/ で開くこと。
     # 別機から開くと secure context を失い Gamepad API が動かない。
+    #
+    # **127.0.0.1 に閉じる。** 0.0.0.0 だと会場の LAN（PC_C_IP）にも
+    # tailnet にも操作画面が出る。この画面には認証が無く（UI_SECRET は
+    # Flask のセッション鍵で、入室制限ではない）、**台車を動かせてしまう。**
+    # ゲームパッドは secure context を要求するので他所からは効かないが、
+    # 画面の Arm ボタンは素の click で動き、twist も console から出せる。
+    # そもそも操作は同一機からと決まっているので、閉じても何も失わない。
     print(f"UI: http://localhost:{PORT}/   (robot={ROBOT_NAME})")
-    socketio.run(app, host="0.0.0.0", port=PORT, allow_unsafe_werkzeug=True)
+    socketio.run(app, host="127.0.0.1", port=PORT, allow_unsafe_werkzeug=True)
 
     ros_node.destroy_node()
     rclpy.try_shutdown()

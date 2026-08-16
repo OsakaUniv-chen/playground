@@ -22,17 +22,19 @@ pc-d-server/     高性能サーバ — 推論（入力は揃っている・判�
 |---|---|---|
 | PC-A サイネージ | `pc-a-signage/` | [pc-a-signage/README.md](pc-a-signage/README.md) |
 | PC-B ロボット | `common/` + `pc-b-robot/` | [pc-b-robot/README.md](pc-b-robot/README.md) |
-| PC-C 操作者 | `common/` + `pc-c-operator/` | [pc-c-operator/README.md](pc-c-operator/README.md) |
+| **PC-C 操作者** | **配らない（この repo の置き場所でそのまま動かす）** | [pc-c-operator/README.md](pc-c-operator/README.md) |
 | PC-D サーバ | `common/` + `pc-d-server/` | [pc-d-server/README.md](pc-d-server/README.md) |
 
-**`common/` は必ず一緒に配り、相対位置を変えない。** 各 PC の `env.sh` は
-`../common/config.env` を、PC-B の `operator_mic_bridge.py` と PC-D の
-`recv_ome.py` は `common/ome_receiver.py` を相対パスで引く。置き場所自体は
-自由だが、下のように並べる:
+**PC-C は開発機そのもの**なので配る必要が無い（配る側がここ）。依存もこの
+機械で直に試せるため、PC-C の README は apt / pip の一覧を持たない。
+
+PC-B と PC-D には **`common/` を必ず一緒に配り、相対位置を変えない。**
+`env.sh` は `../common/config.env` を、PC-B の `operator_mic_bridge.py` と
+PC-D の `recv_ome.py` は `common/ome_receiver.py` を相対パスで引く。置き場所
+自体は自由だが、下のように並べる:
 
 ```
 ~/p32/common/          ~/p32/pc-b-robot/        （PC-B）
-~/p32/common/          ~/p32/pc-c-operator/     （PC-C）
 ~/p32/common/          ~/p32/pc-d-server/       （PC-D）
 ```
 

@@ -43,10 +43,22 @@ function queryGamepadLoop() {
         STATUS.rotate = applyDeadzone(parseFloat((gp.axes[0] * -1).toFixed(4)));
         updateStatusView();
 
-        if (STATUS.speed !== lastSpeedRotate[0] || STATUS.rotate !== lastSpeedRotate[1]) {
-            lastSpeedRotate = [STATUS.speed, STATUS.rotate];
+        // **「変化したか」ではなく「倒れているか」で送信を延命する。**
+        // 沿用元は変化だけで判定していたが、あちらは右スティック（頭部）も
+        // 読んでいて、手が触れている限り微小な変化が絶えず入るので計時器が
+        // 途切れなかった。p3.2 は右スティックを使わない（頭部は PC-D）ので、
+        // その延命源が無い。変化だけで見ると、左スティックを倒したまま
+        // 保持したときに軸の値が動かず（満舵は正確に ±1.0000 で張り付く）、
+        // INACTIVITY_LIMIT が切れて **全速前進のまま 3 秒で停止し、
+        // スティックを動かすまで復帰しない。**
+        // 倒れている間は毎フレーム延ばし、中央へ戻したら延長を止める
+        // （戻した瞬間からは 10 Hz が [0,0] を流し、3 秒後に stopSending が
+        // 最後の [0,0] を送って畳む）。
+        if (STATUS.speed !== 0 || STATUS.rotate !== 0
+            || STATUS.speed !== lastSpeedRotate[0] || STATUS.rotate !== lastSpeedRotate[1]) {
             onUserInput();
         }
+        lastSpeedRotate = [STATUS.speed, STATUS.rotate];
 
         gp.buttons.forEach((button, index) => {
             const was = prevButtons[index] || false;
