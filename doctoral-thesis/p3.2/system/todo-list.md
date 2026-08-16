@@ -178,7 +178,7 @@ gst-inspect-1.0 vaapih264enc && vainfo && ls -l /dev/dri/renderD128 && id
 
 | 対象 | 状態 |
 |---|---|
-| **VLM の判断** | `pc-d-server/head_controller.py` の `decide()`。入力は揃っている ── 映像と音響マップは `OmeInputs`、発話は `asr.py` の `Transcriber.text()`（直近 `ASR_CONTEXT_SEC` 秒）。**あわせて「音響マップ上の位置 → yaw/pitch 何度」の対応付けを決める**（頭部の 0 度は起動時の姿勢） |
+| **VLM の判断** | `pc-d-server/head_controller.py` の `decide()`。入力は 3 系統そろっている ── 映像と音響マップは `OmeInputs`、発話は `Transcriber.text()`。**「音響マップ上の位置 → 何度」は導出済み**（`soundmap_geometry.py`、検算付き）。残るのは (1) マップを画像のまま VLM に見せるか角度に直して言葉で渡すか (2) 推論周期 (3) 向く相手が居ないときの振る舞い |
 | **VLM を繋いだあとの文脈窓** | `ASR_CONTEXT_SEC`（既定 15 秒）を実際の会話で詰める。切り出し側（silence / max_segment）は音の切れ目の話なので触らない ── 理由は pc-d-server/README.md §5 |
 | **回線が切れたときの頭部の挙動** | **未実装。** 台車には watchdog があるが頭部には無い。リンクが落ちたら現在姿勢を保つのか正面に戻すのかを決める |
 | 収録の一括開始・停止 | ROS topic を 1 本立てて開始・停止とセッション ID を揃える。今は PC-B 単独（`./run.sh` が既定で録る） |
