@@ -34,3 +34,9 @@ p6/try-VLM/**/*.jpeg
 p6/try-VLM-server/**/*.png
 p6/try-VLM-server/**/*.jpg
 p6/try-VLM-server/**/*.jpeg
+
+# 沿用元の参考コード（他人のリポジトリの複製）— 2600 ファイル/73M で、
+# 自分の作業ではない。必要な物は各実装側に取り込み済み（p3.2 の
+# audio_common_msgs・soundmap 生成器・teleop_interface の構成）。
+# 手元には残すが版管理はしない。
+reference code/
