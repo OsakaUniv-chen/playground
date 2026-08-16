@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""頭部の向きを決めて PC-B へ送る（設計 §4.2）。
+"""頭部の向きを決めて PC-B へ送る。
 
-現状は骨格だけ。VLM も音響マップもまだ繋いでいないので、既定では
-何も出さない（--demo で正弦波を出して経路だけ確認できる）。
+**現状は骨格だけ。** `decide()` は未実装で、既定では何も送らない。
+最小 demo は遠隔操作だけなので、この経路は demo に含まれない。
 
     ここ ── TCP/JSON ──> PC-C の head_relay.py ── ROS ──> PC-B の head_driver
 
@@ -16,17 +16,15 @@ distro も違う（PC-D は galactic、PC-B / PC-C は humble で既定の RMW �
 `HEAD_RELAY_HOST` / `HEAD_RELAY_PORT` で変えられる。
 
 可動域制限と smoothing は PC-B の head_driver が掛ける。**こちらは
-制限を知らずに指令を出してよい。** 実際に適用された値は PC-B の
-`<robot>/head/applied` に出る。
+制限を知らずに指令を出してよい。** 適用後の値は topic に出ないので、
+必要なら head_driver のパラメータから事後に再現する。
 
-記録の観点（設計 §5.5）:
+記録の観点:
     ここが出す指令は「モデルの判断」。操作者がゲームパッドで出す台車指令とは
     別 topic なので、bag の中で自然に区別できる。両方を混ぜないこと。
 """
 
-import argparse
 import json
-import math
 import os
 import socket
 import time
@@ -97,26 +95,34 @@ class HeadClient:
 
 
 class HeadController:
-    def __init__(self, demo=False):
+    _last_goal = None
+
+    def __init__(self):
         self.client = HeadClient()
-        self.demo = demo
-        self.t0 = time.monotonic()
 
     def publish_goal(self, pitch_deg, yaw_deg, roll_deg=0):
-        """[pitch, yaw, roll] を度で送る。"""
-        self.client.send(pitch_deg, yaw_deg, roll_deg)
+        """[pitch, yaw, roll] を度で送る。**値が変わったときだけ送る。**
 
-    def tick_demo(self):
-        t = time.monotonic() - self.t0
-        # 可動域 (pitch ±30, yaw ±60) の内側で振る
-        self.publish_goal(15 * math.sin(t * 0.3), 40 * math.sin(t * 0.5))
+        VLM を挟むと推論時間ぶん間隔が延びるので、固定周期では出せない。
+        頭部指令には watchdog が無く（台車と違って「止め忘れ」が危険では
+        ないため）、TCP なので取りこぼしも無いので、変化時だけ送れば足りる。
+        PC-B 側の smoothing が間を埋める。
+
+        roll は PC-B が受け取っても無視する（通電して初期位置に保つだけ）。
+        """
+        goal = (round(float(pitch_deg), 2), round(float(yaw_deg), 2),
+                round(float(roll_deg), 2))
+        if goal == self._last_goal:
+            return
+        self._last_goal = goal
+        self.client.send(*goal)
 
     # ---- ここから先が本体。未実装 ----
 
     def decide(self, image, acoustic_map):
         """場面から「誰に向くか」を決める。
 
-        入力は `gst/recv_ome.py` の `OmeInputs` から取る:
+        入力は `recv_ome.py` の `OmeInputs` から取る:
             inp.latest_video("stream")   場面
             inp.latest_video("soundmap") 誰が喋っているか
             inp.latest_audio("mic")      現場の音
@@ -128,39 +134,8 @@ class HeadController:
         raise NotImplementedError
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--demo", action="store_true", help="正弦波を出して経路を確認する")
-    ap.add_argument("--hz", type=float, default=10.0, help="送出周期")
-    ap.add_argument("--seconds", type=float, default=0, help="0 なら止めるまで")
-    a = ap.parse_args()
-
-    node = HeadController(demo=a.demo)
-    print("--demo: 正弦波を出している（経路確認用）" if a.demo
-          else "待機中。VLM を繋いだら decide() から publish_goal() を呼ぶ",
-          flush=True)
-
-    period = 1.0 / a.hz
-    t_start = time.monotonic()
-    last_report = t_start
-    try:
-        while True:
-            if a.demo:
-                node.tick_demo()
-            time.sleep(period)
-            now = time.monotonic()
-            if now - last_report >= 10.0:
-                c = node.client
-                print(f"  送信 {c.n_sent} / 捨てた {c.n_dropped} (10s)", flush=True)
-                c.n_sent = c.n_dropped = 0
-                last_report = now
-            if a.seconds and now - t_start >= a.seconds:
-                break
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.client.close()
-
-
 if __name__ == "__main__":
-    main()
+    raise SystemExit(
+        "decide() が未実装なので、単体で起動しても送るものが無い。\n"
+        "VLM を繋ぐときは decide() を実装し、その結果を publish_goal() に渡す。"
+    )

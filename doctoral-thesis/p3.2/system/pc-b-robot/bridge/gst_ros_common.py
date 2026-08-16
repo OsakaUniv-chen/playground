@@ -4,7 +4,7 @@
 各ブリッジノードはこの GstBridgeNode を継承し、build_pipeline() で
 自分のパイプラインを組み、on_sample() で ROS メッセージに詰める。
 
-時刻の扱い（設計 §5.2）:
+時刻の扱い:
     パイプラインクロックは MONOTONIC のまま使い、記録側で UNIX 時間へ換算する。
         unix_ns = segment.to_running_time(pts) + pipeline.get_base_time() + offset
         offset  = CLOCK_REALTIME - CLOCK_MONOTONIC
@@ -54,7 +54,9 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 def robot_ns() -> str:
-    return "/" + env("ROBOT_NAME", "robot")
+    # 既定値は置かない。未設定のまま起動すると別の接頭辞で publish してしまい、
+    # 収録側と噛み合わずに「エラー無しで何も録れていない」状態になる。
+    return "/" + os.environ["ROBOT_NAME"]
 
 
 # AudioDataStamped には 2 系統ある。

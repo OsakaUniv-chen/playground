@@ -5,7 +5,7 @@
 
 <section class="content">
     <!-- 映像の上に音響マップを重ねる。2 本とも独立したストリームなので、
-         PC-D は音響マップだけを取り出せる。重みは画面のスライダで変える。 -->
+         PC-D は音響マップだけを取り出せる。強さは画面のスライダで変える。 -->
     <div class="player-wrapper">
         <div id="player-cam"></div>
         <div id="player-soundmap"></div>
@@ -13,18 +13,14 @@
 
     <div class="overlay" id="overlay_soundmap_mix">
         <label>SoundMap
-            <input type="range" id="mix" min="0" max="100" value="30">
-            <span id="mixval">30%</span>
+            <input type="range" id="mix" min="0" max="100" value="60">
+            <span id="mixval">60%</span>
         </label>
     </div>
-
-    <div class="overlay" id="overlay_infoimage_recorder">Hold to Talk!</div>
-    <button id="recorder" class="recorder"><div class="recording-indicator"></div></button>
 
     <div class="status-indicator">
         <div>SPEED: <span id="speed">0</span></div>
         <div>ROTATE: <span id="rotate">0</span></div>
-        <div>PTT: <span id="ptt">off</span></div>
     </div>
     <div id="indicator" class="text-indicators"></div>
 
@@ -35,12 +31,11 @@
     <!-- 右スティックは空き。頭部は PC-D の VLM が動かす（設計 §4.2）。
          自律を上書きする手動介入に割り当てるかは未決。 -->
 
+    <!-- 割り当てのあるボタンだけ出す。マイクは常時オンなので PTT は無い。 -->
     <div class="overlay" id="overlay_buttons_abxy">
         <div class="controller-buttons">
             <div class="btn y" id="btnY"><span>Arm Up</span></div>
             <div class="btn x" id="btnX"><span>Arm Down</span></div>
-            <div class="btn b" id="btnB"><span>B</span></div>
-            <div class="btn a" id="btnA"><span>Talk</span></div>
         </div>
     </div>
 </section>
@@ -65,13 +60,13 @@
     const playerCam = mkPlayer("player-cam", "{{ robot_name }}stream", false);
     const playerMap = mkPlayer("player-soundmap", "{{ robot_name }}soundmap", true);
 
-    // 上に重ねた音響マップの不透明度が混合比になる。
-    //   表示 = (1-a)×カメラ + a×音響マップ
-    // 既定 0.3 は「0.7×カメラ + 0.3×音響マップ」。
+    // 音響マップは黒地に黄色の斑点として届く（soundmap_bridge.py）。
+    // style.css で mix-blend-mode: screen を掛けてあるので、黒い所は
+    // カメラ映像がそのまま素通りし、黄色の斑点だけが乗る。
+    // スライダは混合比ではなく**斑点の強さ**（0 で消える）。
     const mix = document.getElementById("mix");
     const applyMix = () => {
-        const a = mix.value / 100;
-        document.getElementById("player-soundmap").style.opacity = a;
+        document.getElementById("player-soundmap").style.opacity = mix.value / 100;
         document.getElementById("mixval").innerText = mix.value + "%";
     };
     mix.addEventListener("input", applyMix);

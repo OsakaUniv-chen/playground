@@ -1,6 +1,6 @@
 #!/bin/bash
 # PC-C の常駐プロセスを起動・停止する。OME は systemd で常駐しているので
-# ここでは起動しない（状態を見るのは ome/run_ome.sh）。
+# ここでは起動しない（`systemctl status ovenmediaengine` で見る）。
 #   ./run.sh            起動（ログは log/ に出る）
 #   ./run.sh stop       停止
 #   ./run.sh status     生きているか
@@ -51,26 +51,8 @@ start() {  # start <name> <command...>
 }
 
 start ui    python3 "$HERE/app.py"
-start mic   python3 "$HERE/gst/operator_mic_send.py"
+start mic   python3 "$HERE/operator_mic_send.py"
 start relay python3 "$HERE/head_relay.py"      # PC-D からの頭部指令 -> ROS
-
-# PC-D（理研）への SSH トンネル。PC-D 側にも PC-C 側にも着信ポートが無いので、
-# **PC-C から出て行く 1 本**で OME の signalling と TURN を PC-D の localhost に
-# 生やす。-R がその向き。UDP は運べないので PC-D は TURN(TCP) を使う
-# （pc-d-server/config.env の OME_USE_TURN=1）。頭部指令の中継も同じ
-# トンネルに相乗りする（HEAD_RELAY_PORT）。
-# PCD_SSH_HOST が空なら張らない（PC-D が同じ LAN に居る場合）。
-if [ -n "${PCD_SSH_HOST:-}" ]; then
-    SSH_BIN=$(command -v autossh || command -v ssh)
-    [ "$(basename "$SSH_BIN")" = "ssh" ] && \
-        echo "  ※ autossh が無いので切れても張り直さない（sudo apt install autossh）"
-    start tunnel "$SSH_BIN" -N \
-        -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes \
-        -R "${OME_WS_PORT}:localhost:${OME_WS_PORT}" \
-        -R "${OME_TURN_PORT}:localhost:${OME_TURN_PORT}" \
-        -R "${HEAD_RELAY_PORT}:localhost:${HEAD_RELAY_PORT}" \
-        "$PCD_SSH_HOST"
-fi
 
 echo
 echo "ブラウザで http://localhost:${UI_PORT}/ を開く"

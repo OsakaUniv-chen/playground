@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PC-D の頭部指令を受けて ROS へ流し直す中継（設計 §4.2）。
+"""PC-D の頭部指令を受けて ROS へ流し直す中継。
 
     PC-D (理研) ── TCP/JSON ──> ここ ── ROS publish ──> PC-B の head_driver
 
@@ -33,7 +33,7 @@ from audio_common_msgs.msg import BoxieMotors
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
-ROBOT_NAME = os.environ.get("ROBOT_NAME", "robot")
+ROBOT_NAME = os.environ["ROBOT_NAME"]   # 既定値は置かない（env.sh 必須）
 PORT = int(os.environ.get("HEAD_RELAY_PORT", 7997))
 BIND = os.environ.get("HEAD_RELAY_BIND", "127.0.0.1")
 
@@ -98,7 +98,7 @@ class HeadRelay(Node):
             return
         msg = BoxieMotors()
         # 到着時刻を打つ。PC-D の時計とは合っていないので、向こうの
-        # 送信時刻は使わない（記録の基準時計は PC-B、設計 §5.2）。
+        # 送信時刻は使わない（記録の基準時計は PC-B）。
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = "head"
         try:

@@ -19,10 +19,14 @@ bag で時刻が揃うので、精密な対応付けはそちらで行う）。
 
 import array
 
-from audio_common_msgs.msg import AudioDataStamped, AudioInfo
-from rclpy.qos import DurabilityPolicy, QoSProfile
+from audio_common_msgs.msg import AudioDataStamped
 
-from gst_ros_common import (GstBridgeNode, env, env_bool, env_int, robot_ns,
+import gi
+
+gi.require_version("Gst", "1.0")
+from gi.repository import Gst  # noqa: E402
+
+from gst_ros_common import (GstBridgeNode, env, env_bool, env_int, robot_ns,  # noqa: E402
                             run, set_audio_data)
 
 try:
@@ -57,19 +61,6 @@ class CamBridge(GstBridgeNode):
             AudioDataStamped, f"{self.ns}/onboard_mic/audio", 50
         )
 
-        # AudioInfo は latched で 1 回だけ。bag に残るので後から設定を探さずに済む。
-        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
-        self.pub_info = self.create_publisher(
-            AudioInfo, f"{self.ns}/onboard_mic/info", latched
-        )
-        info = AudioInfo()
-        info.channels = env_int("ONBOARD_MIC_CHANNELS", 2)
-        info.sample_rate = env_int("ONBOARD_MIC_RATE", 48000)
-        info.sample_format = "S16LE"
-        info.bitrate = info.sample_rate * info.channels * 16
-        info.coding_format = "WAVE"
-        self.pub_info.publish(info)
-
         self.n_video = 0
         self.n_audio = 0
         self.create_timer(10.0, self._report)
@@ -78,6 +69,75 @@ class CamBridge(GstBridgeNode):
 
     def appsink_names(self):
         return ["rec_video", "rec_audio"]
+
+    @staticmethod
+    def _sw_crop(sw, sh, w, h) -> str:
+        """有効範囲だけを切り出す（ソフトウェア）。左右／上下を均等に落とす。"""
+        lr = max(0, (sw - w) // 2)
+        tb = max(0, (sh - h) // 2)
+        if not (lr or tb):
+            return ""
+        return (
+            f"videocrop left={lr} right={sw - w - lr} "
+            f"top={tb} bottom={sh - h - tb} ! "
+        )
+
+    def _transcode(self, sw, sh, w, h, fps, kbps, sw_enc):
+        """MJPG -> 切り出し -> H.264。iGPU が使えるならそちらでやる。
+
+        **速さのためではない。** 符号化＋復号は実測 1.5 ms で、往復 75 ms の
+        中では誤差（大半は OME の固定 21 ms と 1 フレーム 33 ms）。狙いは
+        **CPU を空けること**。PC-B は N100 の 4 コアで 16ch の音響マップ生成と
+        bag 書き込みも同時に回しており、1080×1080@30 のソフトウェア x264 と
+        MJPG 復号だけで 1.5〜2 コア持っていかれる。
+
+        おまけとして、VA-API は常に NV12（4:2:0）なので、x264enc が上流の
+        色形式によって High 4:4:4 を選んでしまう問題（README 参照）が
+        構造的に起きなくなる。プロファイルも SDP の 42e01f と一致する
+        constrained-baseline を直接指定できる。
+
+        エレメントが無ければ黙ってソフトウェアに戻る。**現地で GPU が
+        使えなくても起動はする。**
+        """
+        rot = env_bool("CAM_ROTATE_180", True)
+        need = ("vaapijpegdec", "vaapipostproc", "vaapih264enc")
+        if env_bool("USE_HW_CODEC", True) and all(
+            Gst.ElementFactory.find(e) for e in need
+        ):
+            lr = max(0, (sw - w) // 2)
+            tb = max(0, (sh - h) // 2)
+            self.get_logger().info("映像: iGPU（VA-API）で復号・切り出し・符号化")
+            return (
+                "vaapijpegdec",
+                (
+                    f"vaapipostproc crop-left={lr} crop-right={sw - w - lr} "
+                    f"crop-top={tb} crop-bottom={sh - h - tb} "
+                    + ("video-direction=180 " if rot else "")
+                    + "! "
+                ),
+                (
+                    f"vaapih264enc rate-control=cbr bitrate={kbps} "
+                    f"keyframe-period={fps} tune=low-power"
+                ),
+                "constrained-baseline",
+            )
+
+        missing = [e for e in need if Gst.ElementFactory.find(e) is None]
+        self.get_logger().warn(
+            "映像: ソフトウェアで符号化する。"
+            + (f"無いエレメント: {', '.join(missing)}。" if missing else "")
+            + "sudo apt install gstreamer1.0-vaapi で CPU が 1.5〜2 コア空く"
+        )
+        # videoconvert は必須。x264enc は上流が I420 でないと High 4:4:4 を
+        # 選び、ブラウザが復号できなくなる（README 参照）。
+        # 回転は切り出しの後に置く（画素数が 44% 少ない状態で回す）。
+        flip = "videoflip method=rotate-180 ! " if rot else ""
+        return (
+            "jpegdec",
+            self._sw_crop(sw, sh, w, h) + flip + "videoconvert ! ",
+            sw_enc,
+            "baseline",
+        )
 
     def build_pipeline(self) -> str:
         fake = env_bool("USE_FAKE_SOURCES", True)
@@ -88,16 +148,7 @@ class CamBridge(GstBridgeNode):
         fps = env_int("CAM_FPS", 30)
         kbps = env_int("CAM_BITRATE", 8000)
 
-        # 有効範囲だけを切り出す。左右／上下を均等に落とす。
-        crop_lr = max(0, (sw - w) // 2)
-        crop_tb = max(0, (sh - h) // 2)
-        crop = (
-            f"videocrop left={crop_lr} right={sw - w - crop_lr} "
-            f"top={crop_tb} bottom={sh - h - crop_tb} ! "
-            if (crop_lr or crop_tb)
-            else ""
-        )
-        enc = (
+        sw_enc = (
             f"x264enc tune=zerolatency speed-preset=ultrafast "
             f"bitrate={kbps} key-int-max={fps}"
         )
@@ -118,22 +169,23 @@ class CamBridge(GstBridgeNode):
 
         # --- 映像ソース ---
         if fake:
+            # 試験経路はソフトウェア固定。GPU の有無で挙動が変わらないようにする。
             vsrc = (
                 f"videotestsrc is-live=true pattern=ball "
                 f"! video/x-raw,width={sw},height={sh},framerate={fps}/1 "
-                f"! timeoverlay ! {crop}videoconvert "
-                f"! {enc} ! video/x-h264,profile=baseline"
+                f"! timeoverlay ! {self._sw_crop(sw, sh, w, h)}videoconvert "
+                f"! {sw_enc} ! video/x-h264,profile=baseline"
             )
         else:
-            # MJPG で取り、切り出してから H.264 に符号化する。
-            # 復号と再符号化はどのみち通るので、切り出しの追加コストは小さい。
-            # 画素数が 44% 減るぶん符号化はむしろ軽くなる。
+            # カメラは MJPG しか出さないので、H.264 への変換は避けられない
+            # （OME の入口である RTMP が MJPG を運べない）。切り出しは復号後に
+            # なるが、画素数が 44% 減るぶん符号化はむしろ軽くなる。
+            dec, crop, enc, profile = self._transcode(sw, sh, w, h, fps, kbps, sw_enc)
             vsrc = (
                 f"v4l2src device={env('CAM_DEVICE', '/dev/video0')} "
                 f"do-timestamp=true io-mode=2 "
                 f"! image/jpeg,width={sw},height={sh},framerate={fps}/1 "
-                f"! jpegdec ! {crop}videoconvert ! {enc} "
-                f"! video/x-h264,profile=baseline"
+                f"! {dec} ! {crop}{enc} ! video/x-h264,profile={profile}"
             )
 
         # --- 音声ソース（機体マイク） ---

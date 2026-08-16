@@ -17,7 +17,7 @@
 速度は ALI 側で決まる。8 方向の離散指令なので、こちら側で値を掛けても
 方向が変わらないだけで速度には効かない（速度上限は ALI の設定で絞る）。
 
-MQTT が繋がっていなくてもノードは動く（ログと topic のみ）。
+MQTT が繋がっていなくてもノードは動く（ログのみ）。
 """
 
 import os
@@ -27,7 +27,6 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
-from std_msgs.msg import Int8
 
 try:
     import paho.mqtt.client as mqtt
@@ -48,7 +47,7 @@ ACTION_TABLE = {
 class RoverDriver(Node):
     def __init__(self):
         super().__init__("rover_driver")
-        ns = "/" + os.environ.get("ROBOT_NAME", "robot")
+        ns = "/" + os.environ["ROBOT_NAME"]
 
         self.declare_parameter("mqtt_host", os.environ.get("ALI_MQTT_HOST", "192.168.4.2"))
         self.declare_parameter("mqtt_port", int(os.environ.get("ALI_MQTT_PORT", 9075)))
@@ -62,16 +61,13 @@ class RoverDriver(Node):
         self.sub = self.create_subscription(
             Twist, f"{ns}/rover/twist", self.on_twist, 10
         )
-        # 実際に台車へ送った action を記録に残す（設計 §5.5）
-        self.pub_action = self.create_publisher(Int8, f"{ns}/rover/action_sent", 10)
-
         self.last_cmd_time = None
         self.last_action = None
         self.mqtt = None
         if HAVE_MQTT and self.get_parameter("use_mqtt").value:
             self._connect_mqtt()
         else:
-            self.get_logger().warn("MQTT 無効。action はログと topic のみ")
+            self.get_logger().warn("MQTT 無効。action はログのみ")
 
         self.create_timer(0.1, self.watchdog)
         self.get_logger().info(
@@ -116,7 +112,6 @@ class RoverDriver(Node):
         if action != self.last_action:
             self.get_logger().info(f"action -> {action}")
         self.last_action = action
-        self.pub_action.publish(Int8(data=action))
         if self.mqtt is not None:
             try:
                 self.mqtt.publish("control/joy", '{"data":%d}' % action)

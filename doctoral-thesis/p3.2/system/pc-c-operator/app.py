@@ -5,7 +5,6 @@
   - 機体ではなく PC-C で動かす。指令は DDS でネットワークを越える
   - MongoDB / pyindy を削除（発話系は音声そのままの伝送に置き換え）
   - `camera` コマンドを削除（頭部の指令元は PC-D の VLM）
-  - `speak` を PTT（プッシュトゥトーク）に置き換え。押下区間を topic で残す
   - TLS を外す。ブラウザと同一機なので http://localhost が secure context になり
     Gamepad API とマイク取得の要件を満たす
   - robot_name を環境変数から読む（沿用元はソース直書き）
@@ -18,15 +17,14 @@ import os
 import threading
 
 import rclpy
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 from geometry_msgs.msg import Twist
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from audio_common_msgs.msg import BoxieMotors
-from std_msgs.msg import Bool, Int8
 
-ROBOT_NAME = os.environ.get("ROBOT_NAME", "robot")
+ROBOT_NAME = os.environ["ROBOT_NAME"]   # 既定値は置かない（env.sh 必須）
 PORT = int(os.environ.get("UI_PORT", 7779))
 
 app = Flask(__name__)
@@ -39,10 +37,6 @@ class TeleopPublisher(Node):
         super().__init__("teleop_ui")
         ns = f"/{ROBOT_NAME}"
         self.pub_twist = self.create_publisher(Twist, f"{ns}/rover/twist", 10)
-        # PTT 押下区間。発話がテキストで残らないぶん、これが
-        # 「いつ喋ったか」のラベルになる（設計 §5.5）
-        self.pub_ptt = self.create_publisher(Bool, f"{ns}/operator/ptt", 10)
-        self.pub_button = self.create_publisher(Int8, f"{ns}/operator/button", 10)
         # 腕の上げ下げ。角度は PC-B 側のパラメータで決まるので、
         # ここは「上げ／下げ」だけを送る。
         self.pub_arm = self.create_publisher(BoxieMotors, f"{ns}/arm/command", 10)
@@ -56,13 +50,6 @@ class TeleopPublisher(Node):
         msg.angular.z = float(angular_z)
         self.pub_twist.publish(msg)
 
-    def send_ptt(self, pressed: bool):
-        self.pub_ptt.publish(Bool(data=bool(pressed)))
-        self.get_logger().info(f"PTT {'ON' if pressed else 'OFF'}")
-
-    def send_button(self, index: int):
-        self.pub_button.publish(Int8(data=int(index)))
-
     def send_arm(self, up: bool):
         deg = self.arm_up_deg if up else self.arm_down_deg
         msg = BoxieMotors()
@@ -74,7 +61,6 @@ class TeleopPublisher(Node):
 
 
 ros_node = None
-controller_addr = None
 
 
 @app.route("/")
@@ -82,53 +68,28 @@ def index():
     return render_template("base.html", robot_name=ROBOT_NAME)
 
 
-@app.route("/status")
-def status():
-    return jsonify({"robot": ROBOT_NAME, "controller": controller_addr or ""})
-
-
 @socketio.on("connect")
 def on_connect():
-    global controller_addr
-    if controller_addr is None:
-        controller_addr = request.remote_addr
-        emit("connected", f"controller ({controller_addr})")
-        print("controller connected:", controller_addr)
-    else:
-        emit("connected", f"viewer — {controller_addr} が操作中")
-        print("viewer connected:", request.remote_addr)
+    emit("connected", f"connected to {ROBOT_NAME}")
+    print("browser connected")
 
 
 @socketio.on("disconnect")
 def on_disconnect():
-    global controller_addr
-    if controller_addr == request.remote_addr:
-        controller_addr = None
-        if ros_node is not None:
-            ros_node.send_twist(0.0, 0.0)   # 切断時は必ず停止指令
-            ros_node.send_ptt(False)
-        print("controller disconnected")
+    # 画面が閉じたら必ず停止指令。ブラウザ側の watchdog は当てにしない。
+    if ros_node is not None:
+        ros_node.send_twist(0.0, 0.0)
+    print("browser disconnected")
 
 
 @socketio.on("command")
 def on_command(data):
-    """ブラウザからの指令。
-
-    排他制御はブラウザ相手にしか効かない。DDS 側では誰でも publish できるので、
-    「誰の指令か」は記録側で区別する（設計 §5.5）。
-    """
-    if controller_addr != request.remote_addr:
-        emit("command_ack", {"status": "occupied"})
-        return
+    """ブラウザからの指令。"""
     try:
         typ = data.get("type", "")
         content = data.get("content", "")
         if typ == "twist":
             ros_node.send_twist(content[0], content[1])
-        elif typ == "ptt":
-            ros_node.send_ptt(bool(content))
-        elif typ == "button_press":
-            ros_node.send_button(int(content))
         elif typ == "arm":
             ros_node.send_arm(content == "up")
         else:

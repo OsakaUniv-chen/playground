@@ -5,7 +5,7 @@
     ros2 launch pcb.launch.py fake:=false    実デバイスを使う
 
 環境変数は先に env.sh で読んでおくこと:
-    source env.sh && ros2 launch launch/pcb.launch.py
+    source env.sh && ros2 launch pcb.launch.py
 
 PC-B の起動はこれだけ。1 ノードだけ直しながら動かすときは、launch を止めて
 そのノードを直接叩く。
@@ -19,23 +19,11 @@ from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 
-HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ROBOT = os.environ.get("ROBOT_NAME", "robot")
-RECORD_DIR = os.environ.get("RECORD_DIR", os.path.expanduser("~/p32_bags"))
-SPLIT_MB = int(os.environ.get("BAG_SPLIT_MB", 2048))
+HERE = os.path.dirname(os.path.abspath(__file__))
 
-RECORD_TOPICS = [
-    f"/{ROBOT}/camera/video",
-    f"/{ROBOT}/onboard_mic/audio", f"/{ROBOT}/onboard_mic/info",
-    f"/{ROBOT}/mic_array/audio", f"/{ROBOT}/mic_array/info",
-    f"/{ROBOT}/soundmap/raw",
-    f"/{ROBOT}/operator_mic/audio", f"/{ROBOT}/operator_mic/info",
-    f"/{ROBOT}/rover/twist", f"/{ROBOT}/rover/action_sent",
-    f"/{ROBOT}/head/command", f"/{ROBOT}/head/applied",
-    f"/{ROBOT}/head/current", f"/{ROBOT}/head/status",
-    f"/{ROBOT}/operator/ptt",
-    f"/{ROBOT}/record/clock_offset",
-]
+# 収録する topic の一覧は record.sh だけが持つ。ここでそれを呼ぶ形にして、
+# 同じ一覧を 2 か所に書かない（片方だけ直して片方が古くなる）。
+RECORD_SH = os.path.join(HERE, "record.sh")
 
 
 def proc(name, script, respawn=True):
@@ -72,12 +60,7 @@ def generate_launch_description():
         # 上げ直すと、その間のデータが抜けたことが分からなくなる）
         ExecuteProcess(
             condition=IfCondition(record),
-            cmd=[
-                "ros2", "bag", "record", "-s", "mcap",
-                "-o", os.path.join(RECORD_DIR, session),
-                "--max-bag-size", str(SPLIT_MB * 1024 * 1024),
-                *RECORD_TOPICS,
-            ],
+            cmd=[RECORD_SH, session],
             name="record",
             output="screen",
         ),

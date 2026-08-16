@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""操作者マイク（PC-C から OME 経由）-> 機体スピーカー と ROS 記録（設計 §2 §4.1）。
+"""操作者マイク（PC-C から OME 経由）-> 機体スピーカー と ROS 記録。
 
     OmeReceiver ─ on_audio ─┬─ ROS publish        (記録)
                             └─ appsrc ─ alsasink  (スピーカー)
@@ -7,7 +7,7 @@
 OME を通すので PC-D も同じ音声を取れる。
 
 タイムスタンプは **PC-B 到着時刻**。PC-C で採られた音なので採取時刻は
-こちらでは分からない（設計 §5.2）。基準時計は PC-B だけなので、
+こちらでは分からない。基準時計は PC-B だけなので、
 PC-C と時刻を合わせる必要は無い。
 
 `gstreamer1.0-nice` が要る（無いと WebRTC の answer が黙って失敗する）。
@@ -17,8 +17,7 @@ import os
 import sys
 import time
 
-from audio_common_msgs.msg import AudioDataStamped, AudioInfo
-from rclpy.qos import DurabilityPolicy, QoSProfile
+from audio_common_msgs.msg import AudioDataStamped
 
 import gi
 
@@ -48,22 +47,29 @@ class OperatorMicBridge(GstBridgeNode):
             AudioDataStamped, f"{self.ns}/operator_mic/audio", 100
         )
 
-        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
-        self.pub_info = self.create_publisher(
-            AudioInfo, f"{self.ns}/operator_mic/info", latched
-        )
-        info = AudioInfo()
-        info.channels = self.channels
-        info.sample_rate = self.rate
-        info.sample_format = "S16LE"        # Opus を復号した後の PCM を記録する
-        info.bitrate = self.rate * self.channels * 16
-        info.coding_format = "WAVE"
-        self.pub_info.publish(info)
-
         self.n = 0
         self.create_timer(10.0, self._report)
 
     # ---- 経路ごとのパイプライン ----
+
+    def _ome_log(self, level, msg):
+        """OmeReceiver のログを ROS のログに載せる。
+
+        **重要度ごとに別の行から呼ぶこと。** rclpy のロガーは呼び出し元を
+        (ファイル, 行, 関数) で識別して設定を覚えるので、1 行の中で
+        `info` と `warn` を切り替えると 2 回目に
+        `ValueError: Logger severity cannot be changed between calls.` で落ちる。
+        送出がまだ無いとき OME は 404 を返し、受信側はそれを warn で
+        報告して繋ぎ直す ── ここが落ちると**起動順を問わないという
+        前提そのものが崩れる**（実際に launch で踏んだ）。
+        """
+        text = f"[ome] {msg}"
+        if level == "error":
+            self.get_logger().error(text)
+        elif level == "warn":
+            self.get_logger().warn(text)
+        else:
+            self.get_logger().info(text)
 
     def build_pipeline(self) -> str:
         fake = env_bool("USE_FAKE_SOURCES", True)
@@ -102,9 +108,7 @@ class OperatorMicBridge(GstBridgeNode):
             on_audio=self._on_ome_audio,
             # 記録するレートに揃えてから受ける（OME から出るのは 48 kHz）
             audio_caps=self.caps,
-            logger=lambda lv, m: getattr(
-                self.get_logger(), {"warn": "warn", "error": "error"}.get(lv, "info")
-            )(f"[ome] {m}"),
+            logger=self._ome_log,
         )
         self.rx.start()
         self.get_logger().info(

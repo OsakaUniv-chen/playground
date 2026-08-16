@@ -1,3 +1,6 @@
+/* 操作画面。沿用元から持ち込んだ未使用の様式は落としてあり、
+   ここに残っているものはすべて templates/base.html に対応する要素がある。 */
+
 html,
 body {
   margin: 0;
@@ -11,92 +14,60 @@ body {
   height: 100%;
   background-color: #1e1e1e;
   position: relative;
- 
 }
+
+/* ---- 映像と音響マップ（設計 §3）---- */
+/* 2 つの player を同じ場所に重ね、上側が音響マップ。 */
 
 .player-wrapper {
   width: 100%;
-  height: 100%; /* 100% 93% is good too*/
+  height: 100%;
   overflow: hidden;
   background-color: transparent;
+  position: relative;
+}
+
+#player-cam,
+#player-soundmap {
   position: absolute;
-  /* margin-bottom: 5px; */
-  /* background-color: #1e1e1e;*/
-}
-
-#player-top{
-  width: 60%;  /*68 65%*/
-  height: 82%; /*72 % of the screen height */
-  position: absolute;
-  /*top: 1px;*/
-  background-color: seashell;
-  align-items: center;
-  object-fit: contain;
-  border: 6px solid #f8f4f4;
-  border-radius: 8px; 
-  top: 2px;
-  left: 50%; /* calc(50% - 30%); */
-  transform: translate(-50%, 0); /*rotate(-90deg);*/
-
-  /*box-shadow: 0px 0px 15px 5px rgba(255, 99, 71, 0.7); /* Glowing red border */
-  box-shadow: 0px 0px 30px 10px rgba(255, 0, 0, 0.9); /* More intense red glow */
-
-  transition: transform 0.2s ease, opacity 0.2s ease;
-  z-index: 3; 
-}
-
-/* Second player wrapper (to crop video horizontally) */
-#player-below {
-  width: 100%;  /* Full width for the small video */
-  height: 100%; /* % of the screen height */
-  position: absolute; 
-  /* bottom: 1px; */
-  background-color: #1e1e1e;
-  
-}
-
-
-.recorder {
-  width: 75px;/* 65px; */
-  height: 75px;
-  padding: 6px; /* 4px; */
-  position: absolute;
-  bottom: 40px;
-  left: 50%;
-  background-color: transparent;
-  border-radius: 50%;
-  cursor: pointer;
-  border: 4px solid white;
-  transition: all 0.2s ease;
-  outline: none;
-  transform: translate(-50%, 0);
-}
-
-/* Inner red circle */
-.recorder .recording-indicator {
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  background-color: red;
-  border-radius: 50%;
-  transition: border-radius 0.2s ease;
 }
 
-/* Active state (toggle for recording) */
-.recorder.active {
-  width: 30px;
-  height: 30px;
-  padding: 14px;
+#player-soundmap video,
+#player-soundmap canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
 }
 
-.recorder.active .recording-indicator {
-  border-radius: 30%;
+/* 音響マップは黒地に黄色の斑点として届く（soundmap_bridge.py の _push_to_ome）。
+   screen 合成なので黒い所はカメラ映像がそのまま素通りし、黄色だけが乗る
+   ── QC 動画 bag2video.py の cv2.addWeighted と同じ見え方になる。
+   拡大は補間させる（あちらも INTER_LINEAR で 1080 に伸ばしている）。 */
+#player-soundmap {
+  pointer-events: none;          /* クリックは下のカメラに通す */
+  mix-blend-mode: screen;
+  opacity: 0.6;                  /* JS のスライダで上書きされる */
 }
 
-/* Pressed state (shrink while holding) */
-.recorder.pressed {
-  /*transform: scale(0.8);  /* shrink 20% */
-  transform: translate(-50%, 0) scale(1.8);
+#overlay_soundmap_mix {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  color: #fff;
+  font-size: 13px;
+  z-index: 10;
 }
+
+#overlay_soundmap_mix input {
+  vertical-align: middle;
+  width: 120px;
+}
+
+/* ---- 状態表示 ---- */
 
 .status-indicator {
   position: absolute;
@@ -117,72 +88,11 @@ body {
   left: 10%;
   text-align: center;
   text-shadow: 0.5px 0.5px 3px #1e1e1e;
-  transition: opacity 1s ease;
-}
-.text-indicators.hidden {
-  opacity: 0;
-}
-
-.infoimage-wrapper {
-  width: 100%;
-  height: 100%;
-}
-
-
-#overlay_infoimage_topleft{
-    position: absolute;
-    top: 10px;
-    left: 10px;
-}
-
-#overlay_infoimage_topright{
-    position: absolute;
-    top: 10px;
-    right: 10px;
-}
-
-#overlay_infoimage_bottomleft{
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-
-}
-#overlay_infoimage_bottomright{
-    position: absolute;
-    bottom: 30%; /*10px;*/
-    right: 10px;
-}
-
-#overlay_infoimage_languageinput{
-    position: absolute;
-    bottom: 30%; /*10px;*/
-    left: 10px;
-}
-
-#overlay_infoimage_recorder{
-  position: absolute;
-  bottom: 5px;
-  /* left: 67px; */
-  left: 50%;
-  text-align: center;
-  transform: translate(-50%, 0);
-  /* background: rgba(0, 0, 0, 0.5); */
-}
-
-.content .overlay {
-  opacity: 1;
 }
 
 .overlay {
-  position: absolute; 
-  /* bottom: 0; */
+  position: absolute;
   background: rgba(253, 253, 253, 0.7);
-  /*  background: rgba(0, 0, 0, 0.5); /* Black see-through */
-  /* background: rgba(0, 0, 0, 0.3); this one */  
-  /* color: #f1f1f1;  this */
-  /*  width: 100%; */
-  transition: .5s ease;
-  opacity:0;
   color: rgb(0, 0, 0);
   font-size: 20px;
   font-weight: bold;
@@ -191,145 +101,25 @@ body {
   font-family: "Lucida Console", "Courier New", monospace;
 }
 
-
-.rotated-line {
-  border-left: 3px dashed blue; /* Adjust thickness, style, and color as needed */
-  border-right: 3px dashed blue;
-  height: 170px; /* Set the desired height of the line 400px*/
-    /* Optional: positioning and alignment */
-  position: absolute; /* If you need precise positioning */
-  bottom: 1px; 
-
-  left: 50%; /* To center the line horizontally */
-  /*transform: translateX(-50%); /* To precisely center with left: 50% */
-  /* transform-origin: top left; /* Adjust origin if needed for positioning */
-  
-  transform-origin: bottom;     /* grow from bottom up */
-  /*transition: transform 1s ease-out; /* smooth grow */
-  opacity: 0;
-}
-
-/* Keyframes for repeated grow/shrink */
-@keyframes growUp {
-  0% {
-    transform: scaleY(0);
-    opacity: 0;
-  }
-  10% {
-    transform: scaleY(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scaleY(1);
-    opacity: 0;
-  }
-  51% {
-    transform: scaleY(0); /* instantly reset to zero */
-    opacity: 0;
-  }
-  100% {
-    transform: scaleY(0);
-    opacity: 0;
-  }
-}
-
-#overlay-rotated-line-right {
-  left: calc(50% + 375px); /*320px*/
-  animation: growUp 3s ease-in-out infinite;
-  transform: rotateZ(10deg) scaleY(0);
-}
-#overlay-rotated-line-left {
-  left: calc(50% - 275px);
-  animation: growUp 3s ease-in-out infinite;
-  transform: rotateZ(-10deg) scaleY(0);
-  
-}
-/* Active state: fully grown lines */
-#overlay-rotated-line-left.active {
-  transform: rotateZ(10deg) scaleY(1); 
-}
-#overlay-rotated-line-right.active {
-  transform: rotateZ(-10deg) scaleY(1); /* for right line */
-}
-
-.long-dot-line {
+#overlay_infoimage_topleft {
   position: absolute;
-  z-index: 2; 
-  bottom: 1px;
-  width: 6px;           /* width of the dotted line */
-  height: 400px;        /* length of the dotted line */
-  background-image: radial-gradient(blue 50%, transparent 50%);
-  background-size: 6px 20px; /* dot size and spacing */
-  background-repeat: repeat-y;
-  transform-origin: bottom;
-  animation: riseDots 2s linear infinite;
+  top: 10px;
+  left: 10px;
 }
 
-/* Rotate the lines slightly */
-#dot-line-left {
-  left: calc(50% - 390px);
-  transform: rotateZ(15deg);
-}
+/* ---- ゲームパッドのボタン ---- */
+/* 割り当てのあるものだけ。押している間 gamepad.js が .active を付ける。 */
 
-#dot-line-right {
-  left: calc(50% + 400px);
-  transform: rotateZ(-15deg);
-  /*animation-delay: 0.5s; /* staggered for wave effect */
-}
-
-/* Animation: move dots upward */
-@keyframes riseDots {
-  0% {
-    background-position: 0 20px; /* start slightly below */
-    opacity: 1;
-  }
-  100% {
-    background-position: 0 0;   /* dots move up */
-    opacity: 1;
-  }
-}
-
-
-
-/*            */
-.language-buttons {
-    display: flex;
-    flex-direction: column;   /* stack vertically */
-    gap: 8px;
-}
-
-.lang-btn {
-    padding:  12px 16px; 
-    background: #333;
-    border: 2px solid #666;
-    border-radius: 4px;
-    cursor: pointer;
-    color: white;
-    font-family: "Lucida Console", "Courier New", monospace;
-    font-size: 18px;
-}
-
-.lang-btn:hover {
-    background: #555;
-}
-
-.lang-btn.active {
-    background: #007bff;
-    border-color: #0056c7;
-}
-
-/*          */
 #overlay_buttons_abxy {
   position: absolute;
   right: 10px;
   bottom: 30%;
-  /*z-index: 1000;*/
 }
 
 .controller-buttons {
   position: relative;
   width: 225px;
-  height: 260px;
+  height: 160px;
 }
 
 .btn {
@@ -339,57 +129,21 @@ body {
   font-size: 12px;
 }
 
-.btn img {
-  width: 70px;
-  height: 70px;
-  /*transition: transform 0.1s, filter 0.1s; or transition: all 0.15s ease; */
-  transition: all 0.15s ease; 
-}
-
-/* Xbox layout */
 .btn.y { top: 0; left: 78px; }
 .btn.x { top: 95px; left: 0; }
-.btn.b { top: 95px; right: 0; }
-.btn.a { bottom: 0; left: 78px; }
 
-/* Label text */
 .btn span {
   display: block;
   margin-top: 4px;
   font-size: 17px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  transition: all 0.12s ease;
 }
 
-/* 🔥 Highlight effect */
-.btn.active img {
-  transform: scale(1.3);
-  filter: brightness(1.5) drop-shadow(0 0 10px white);
-  transition: transform 0.12s cubic-bezier(0.68, -0.55, 0.27, 1.55), filter 0.12s ease;
+.btn.active span {
+  background: rgba(255, 255, 255, 0.9);
+  color: #000;
+  transform: scale(1.2);
 }
-
-/*      */
-
-/* ---- 音響マップの重ね合わせ（設計 §3）---- */
-/* 2 つの player を同じ場所に置き、上側の不透明度で混合比を決める。
-   screen ブレンドにしているのは、暗い部分でカメラ映像を潰さないため。 */
-.player-wrapper { position: relative; }
-#player-cam, #player-soundmap {
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: 100%;
-}
-#player-soundmap video, #player-soundmap canvas {
-    width: 100%; height: 100%; object-fit: fill;
-    image-rendering: pixelated;
-}
-#player-soundmap {
-    pointer-events: none;          /* クリックは下のカメラに通す */
-    /* 64×64 で届くので、拡大時に補間させない。にじませると
-       ピークの位置がぼやけて読み取りにくくなる。 */
-    image-rendering: pixelated;
-    mix-blend-mode: screen;
-    opacity: 0.3;                  /* JS のスライダで上書きされる */
-}
-#overlay_soundmap_mix {
-    position: absolute; right: 16px; bottom: 16px;
-    color: #fff; font-size: 13px; z-index: 10;
-}
-#overlay_soundmap_mix input { vertical-align: middle; width: 120px; }

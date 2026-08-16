@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLOCK_MONOTONIC と CLOCK_REALTIME の対応を 1 Hz で bag に残す（設計 §5.2）。
+"""CLOCK_MONOTONIC と CLOCK_REALTIME の対応を 1 Hz で bag に残す。
 
 gst の PTS は MONOTONIC 基準なので、UNIX 時間への換算に offset を使う。
 offset は NTP の frequency slewing 中はほぼ一定だが、step が入ると飛ぶ。

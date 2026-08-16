@@ -1,26 +1,32 @@
 #!/usr/bin/env python3
-"""Boxie の BLE モータ（頭部 2 軸 + 両腕）。
+"""Boxie の BLE モータ 5 個（頭部 pitch/yaw/roll + 両腕）。
 
-頭部の指令元は PC-D の VLM（設計 §4.2）、腕は操作者のボタン。
-roll 軸は使わない（機体にはあるが P3.2 では動かさない）。
+頭部の指令元は PC-D の VLM、腕は操作者のボタン。
+
+**roll は動かさないが、通電はする。** 5 個すべてに enable_action を掛け、
+roll は起動時の位置（preset_position で 0 とした点）へ保持し続ける。
+通電しないとトルクが掛からず、**首が左右に揺れる**ため。
 
 BLE アダプタを複数プロセスで奪い合わないよう、頭部と腕を 1 ノードにまとめる。
 
 topic:
     sub  <robot>/head/command   BoxieMotors   指令 [pitch, yaw] 度
-    pub  <robot>/head/applied   BoxieMotors   clamp + smooth 後に実際に送った値
-    pub  <robot>/head/current   BoxieMotors   モータから読んだ実測値（既定 20 Hz）
     sub  <robot>/arm/command    BoxieMotors   腕 [left, right] 度
-    pub  <robot>/arm/current    BoxieMotors   腕の実測値
-    pub  <robot>/status         BoxieStatus   接続状態
+    pub  <robot>/keigan_motor/status  BoxieStatus  接続状態
+
+**関節角の読み戻しは記録しない。** BLE の帯域が乏しく、定期的に角度を
+読むと指令の送信を圧迫するため。記録に残るのは指令だけで、可動域制限と
+smoothing の効きは、ここのパラメータから事後に再現する。
+
+ただし **10 秒に 1 回、生存確認として `read_motor_measurement()` を叩く**
+（5 個で 0.5 回/秒。既存 boxie_node の check_motor_health と同じやり方）。
+落ちた軸は繋ぎ直し、結果を毎回 status に出す。**変化時だけでなく毎回出す**
+ので、bag には必ず 10 秒おきの状態が残る。
 
 型は ~/ros2_ws の audio_common_msgs をそのまま使う（int16[3] = [pitch, yaw, roll]、
 単位は度）。既存の boxie_node が使う `/boxie/boxie_command` 系とは topic を
 分けてある。同時に起動すると両方がモータを掴みに行くので、**どちらか一方だけ**
 動かすこと。
-
-指令・実際に送った値・実測値を別 topic に分けているのは記録のため（設計 §5.5）。
-可動域に当たった場面や smoothing の効き具合は、指令値だけでは分からない。
 
 pykeigan が無い環境（実機に繋がっていない開発機）では自動的に模擬モードになる。
 """
@@ -45,24 +51,16 @@ except ImportError:
 # ---- モータ ----
 
 class MotorStub:
-    """実機が無いときの代用。指令角へ 1 次遅れで近づく。"""
+    """実機が無いときの代用。指令を受け取って捨てるだけ。"""
 
-    def __init__(self, name, tau=0.15):
+    def __init__(self, name):
         self.name = name
-        self.pos = 0.0
-        self.target = 0.0
-        self.tau = tau
-        self.t_last = time.monotonic()
 
     def move_to_deg(self, deg):
-        self.target = float(deg)
+        pass
 
-    def read_deg(self):
-        now = time.monotonic()
-        dt = now - self.t_last
-        self.t_last = now
-        self.pos += (self.target - self.pos) * min(1.0, dt / self.tau)
-        return self.pos
+    def probe(self):
+        pass
 
     def close(self):
         pass
@@ -81,22 +79,33 @@ class KeiganMotor:
         self.connect()
 
     def connect(self):
+        """既存 boxie_node の _connect_single_motor と同じ手順で初期化する。
+
+        preset_position(0) が要点 — 「いま居る位置」を 0 度と定義する。
+        可動域制限（±30 / ±60 度）はこの 0 を基準に効くので、これが無いと
+        モータ内部の絶対原点を基準に動いてしまう。
+        """
         self.dev = blecontroller.BLEController(self.address)
         self.dev.enable_action()
-        self.dev.set_speed(self.speed)
+        time.sleep(0.1)
+        self.dev.reset_all_pid()
+        self.dev.reset_all_registers()
+        self.dev.enable_continual_motor_measurement()
         self.dev.set_acc(self.accel)
+        self.dev.set_dec(self.accel)
         self.dev.set_max_torque(self.torque)
+        self.dev.set_speed(self.speed)
+        self.dev.set_curve_type(0)
+        self.dev.preset_position(0)
 
     def move_to_deg(self, deg):
         from pykeigan import utils
 
         self.dev.move_to_pos(utils.deg2rad(float(deg)))
 
-    def read_deg(self):
-        from pykeigan import utils
-
-        m = self.dev.read_motor_measurement()
-        return utils.rad2deg(m.get("position", 0.0))
+    def probe(self):
+        """生存確認。繋がっていなければ例外が出る。角度は使わない。"""
+        self.dev.read_motor_measurement()
 
     def close(self):
         try:
@@ -106,12 +115,14 @@ class KeiganMotor:
 
 
 class HeadDriver(Node):
-    HEAD_AXES = ("pitch", "yaw")          # roll は使わない
+    HEAD_AXES = ("pitch", "yaw")          # 指令を受けて動かす
+    HOLD_AXES = ("roll",)                 # 通電して初期位置に保つだけ
     ARM_AXES = ("left_arm", "right_arm")
+    ALL_AXES = HEAD_AXES + HOLD_AXES + ARM_AXES   # 通電する 5 個
 
     def __init__(self):
         super().__init__("head_driver")
-        ns = "/" + os.environ.get("ROBOT_NAME", "robot")
+        ns = "/" + os.environ["ROBOT_NAME"]
 
         # ★ 安全側の可動域[度]。既存 boxie_node の既定値に合わせてある。
         #   実機で機体に当たらない範囲を確認して詰めること。
@@ -128,6 +139,8 @@ class HeadDriver(Node):
             "ADDR_HEAD_PITCH", "f1:ae:4f:c1:57:c0"))
         self.declare_parameter("addr_yaw", os.environ.get(
             "ADDR_HEAD_YAW", "cd:93:a4:6f:be:9b"))
+        self.declare_parameter("addr_roll", os.environ.get(
+            "ADDR_HEAD_ROLL", "ec:64:f6:ba:ca:7e"))
         self.declare_parameter("addr_left_arm", os.environ.get(
             "ADDR_LEFT_ARM", "c5:0b:cb:17:b4:a5"))
         self.declare_parameter("addr_right_arm", os.environ.get(
@@ -136,8 +149,8 @@ class HeadDriver(Node):
         self.declare_parameter("acceleration", 200.0)
         self.declare_parameter("torque", 0.2)
         self.declare_parameter("smooth_alpha", 0.6)
-        self.declare_parameter("report_hz", 20.0)
-        self.declare_parameter("reconnect_interval", 10.0)
+        # 生存確認と status 送出の周期。5 個 / 10 s なので BLE への負荷は無視できる
+        self.declare_parameter("health_check_interval", 10.0)
 
         self.limits = {a: int(self.get_parameter(f"max_{a}").value)
                        for a in self.HEAD_AXES}
@@ -149,25 +162,20 @@ class HeadDriver(Node):
         self.sub = self.create_subscription(
             BoxieMotors, f"{ns}/head/command", self.on_command, 10
         )
-        self.pub_applied = self.create_publisher(BoxieMotors, f"{ns}/head/applied", 10)
-        self.pub_current = self.create_publisher(BoxieMotors, f"{ns}/head/current", 10)
-        self.pub_status = self.create_publisher(BoxieStatus, f"{ns}/status", 10)
+        self.pub_status = self.create_publisher(
+            BoxieStatus, f"{ns}/keigan_motor/status", 10
+        )
         # --- 腕 ---
         self.sub_arm = self.create_subscription(
             BoxieMotors, f"{ns}/arm/command", self.on_arm_command, 10
         )
-        self.pub_arm_current = self.create_publisher(
-            BoxieMotors, f"{ns}/arm/current", 10
-        )
-
         self.lock = threading.Lock()
         self.motors = {}
         self.connect_motors()
 
-        hz = float(self.get_parameter("report_hz").value)
-        self.create_timer(1.0 / hz, self.report_current)
         self.create_timer(
-            float(self.get_parameter("reconnect_interval").value), self.health_check
+            float(self.get_parameter("health_check_interval").value),
+            self.health_check,
         )
         self.get_logger().info(
             f"head_driver: 可動域(度) {self.limits} / "
@@ -176,50 +184,83 @@ class HeadDriver(Node):
 
     # ---- 接続 ----
 
+    def _new_motor(self, axis):
+        """1 軸を繋いで初期化する。失敗したら例外。"""
+        return KeiganMotor(
+            axis,
+            self.get_parameter(f"addr_{axis}").value,
+            float(self.get_parameter("speed").value),
+            float(self.get_parameter("acceleration").value),
+            float(self.get_parameter("torque").value),
+        )
+
     def connect_motors(self):
-        for axis in self.HEAD_AXES + self.ARM_AXES:
+        """5 軸すべてを繋ぐ。roll も含めて通電する。"""
+        for axis in self.ALL_AXES:
             addr = self.get_parameter(f"addr_{axis}").value
             if HAVE_PYKEIGAN and addr:
                 try:
-                    self.motors[axis] = KeiganMotor(
-                        axis,
-                        addr,
-                        float(self.get_parameter("speed").value),
-                        float(self.get_parameter("acceleration").value),
-                        float(self.get_parameter("torque").value),
-                    )
+                    self.motors[axis] = self._new_motor(axis)
                     self.get_logger().info(f"BLE 接続 {axis}: {addr}")
                     continue
                 except Exception as e:
                     self.get_logger().error(f"BLE 接続失敗 {axis} ({addr}): {e}")
             self.motors[axis] = MotorStub(axis)
+        self._hold_uncontrolled()
         self.publish_status()
 
-    def health_check(self):
-        """繋がっていない軸があれば繋ぎ直す。
+    def _hold_uncontrolled(self):
+        """roll を初期位置（preset_position で 0 とした点）に保持する。
 
-        BLE は現地の電波状況で落ちる。落ちたまま黙って動かないより、
-        再接続を試み、状態を topic に出して記録に残すほうがよい。
+        指令は一切受け付けないが、通電したまま 0 を指示し続けることで
+        トルクが掛かり、首が揺れなくなる。
+        """
+        for axis in self.HOLD_AXES:
+            try:
+                with self.lock:
+                    self.motors[axis].move_to_deg(0)
+            except Exception as e:
+                self.get_logger().error(f"{axis} の保持に失敗: {e}")
+
+    def health_check(self):
+        """10 秒ごとに全軸の生存を確かめ、落ちていれば繋ぎ直す。
+
+        既存 boxie_node の check_motor_health と同じで、`read_motor_measurement()`
+        が例外を出すかどうかで判定する。BLE は現地の電波状況で落ちるので、
+        落ちたまま黙って動かないより、繋ぎ直して状態を残すほうがよい。
+
+        **status は毎回出す。** 変化時だけだと、順調なときに bag へ 1 件も
+        残らず「繋がっていた」ことを事後に確かめられなくなる。
         """
         if not HAVE_PYKEIGAN:
+            self.publish_status()
             return
+
+        reconnected = False
         for axis, m in list(self.motors.items()):
-            if isinstance(m, MotorStub):
-                addr = self.get_parameter(f"addr_{axis}").value
-                if not addr:
-                    continue
+            if not isinstance(m, MotorStub):
                 try:
                     with self.lock:
-                        self.motors[axis] = KeiganMotor(
-                            axis, addr,
-                            float(self.get_parameter("speed").value),
-                            float(self.get_parameter("acceleration").value),
-                            float(self.get_parameter("torque").value),
-                        )
-                    self.get_logger().info(f"再接続 {axis}")
-                    self.publish_status("reconnected")
-                except Exception:
-                    pass
+                        m.probe()
+                    continue
+                except Exception as e:
+                    self.get_logger().warn(f"{axis} が応答しない: {e}")
+                    with self.lock:
+                        m.close()
+                        self.motors[axis] = MotorStub(axis)
+            # ここに来るのは stub（元から／たった今落ちた）だけ
+            if not self.get_parameter(f"addr_{axis}").value:
+                continue
+            try:
+                with self.lock:
+                    self.motors[axis] = self._new_motor(axis)
+                self.get_logger().info(f"再接続 {axis}")
+                reconnected = True
+            except Exception:
+                pass
+        if reconnected:
+            self._hold_uncontrolled()
+        self.publish_status()
 
     # ---- 指令 ----
 
@@ -231,21 +272,13 @@ class HeadDriver(Node):
             )
             return
 
-        applied = []
         for axis, v in zip(self.HEAD_AXES, vals):   # roll は無視する
-            lim = self.limits[axis]
-            clamped = max(-lim, min(lim, float(v)))
-            if abs(float(v)) > lim:
-                self.get_logger().warn(
-                    f"{axis} 指令 {v} 度が可動域 ±{lim} 外。丸める",
-                    throttle_duration_sec=2.0,
-                )
+            clamped = self._clamp(v, self.limits[axis], axis)
             # EMA で滑らかにする。VLM の出力が飛んだときに首が急に振れないように。
             self.smoothed[axis] = (
                 self.alpha * clamped + (1.0 - self.alpha) * self.smoothed[axis]
             )
             deg = int(round(self.smoothed[axis]))
-            applied.append(deg)
             try:
                 with self.lock:
                     self.motors[axis].move_to_deg(deg)
@@ -254,8 +287,6 @@ class HeadDriver(Node):
                 with self.lock:
                     self.motors[axis] = MotorStub(axis)   # health_check が拾う
                 self.publish_status("disconnected")
-
-        self.publish_motors(self.pub_applied, applied)
 
     def _clamp(self, v, lim, label):
         """±lim 度に丸める。外に出た指令はログに残す。"""
@@ -288,31 +319,8 @@ class HeadDriver(Node):
                     self.motors[axis] = MotorStub(axis)
         self.get_logger().info(f"arm -> {vals[:2]}")
 
-    # ---- 実測 ----
-
-    def report_current(self):
-        def read(axes):
-            out = []
-            for a in axes:
-                try:
-                    with self.lock:
-                        out.append(int(round(self.motors[a].read_deg())))
-                except Exception:
-                    out.append(0)
-            return out
-
-        self.publish_motors(self.pub_current, read(self.HEAD_AXES))
-        self.publish_motors(self.pub_arm_current, read(self.ARM_AXES))
-
-    def publish_motors(self, pub, vals):
-        msg = BoxieMotors()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "head"
-        msg.data = [int(v) for v in vals]
-        pub.publish(msg)
-
     def publish_status(self, extra=None):
-        n_all = len(self.HEAD_AXES) + len(self.ARM_AXES)
+        n_all = len(self.ALL_AXES)
         connected = sum(1 for m in self.motors.values() if not isinstance(m, MotorStub))
         msg = BoxieStatus()
         msg.header.stamp = self.get_clock().now().to_msg()

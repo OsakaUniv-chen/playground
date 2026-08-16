@@ -18,14 +18,14 @@ PC-B のフォルダごと配ればそのまま動く）。CPU のみで動き�
 import array
 import os
 import sys
+import time
 
 import gi
 import numpy as np
 
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
-from audio_common_msgs.msg import AudioDataStamped, AudioInfo
-from rclpy.qos import DurabilityPolicy, QoSProfile
+from audio_common_msgs.msg import AudioDataStamped
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 
 from gst_ros_common import (GstBridgeNode, env, env_bool, env_int, robot_ns,
@@ -36,11 +36,6 @@ from gst_ros_common import (GstBridgeNode, env, env_bool, env_int, robot_ns,
 _GEN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "soundmap")
 if _GEN_DIR not in sys.path:
     sys.path.insert(0, _GEN_DIR)
-
-try:
-    import cv2 as _CV2
-except ImportError:      # 色を付けられないだけ。灰色で送る
-    _CV2 = None
 
 try:
     from onebit_soundmap import OneBitSoundMapAPI
@@ -69,18 +64,6 @@ class SoundMapBridge(GstBridgeNode):
         self.pub_audio = self.create_publisher(
             AudioDataStamped, f"{self.ns}/mic_array/audio", 100
         )
-        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
-        self.pub_info = self.create_publisher(
-            AudioInfo, f"{self.ns}/mic_array/info", latched
-        )
-        info = AudioInfo()
-        info.channels = self.channels
-        info.sample_rate = self.rate
-        info.sample_format = env("MIC_ARRAY_FORMAT", "S16LE")
-        info.bitrate = self.rate * self.channels * 16
-        info.coding_format = "WAVE"
-        self.pub_info.publish(info)
-
         # --- 音響マップ（生成値。OME へ送る画像はここから作る）---
         self.pub_map = self.create_publisher(
             Float32MultiArray, f"{self.ns}/soundmap/raw", 10
@@ -128,9 +111,7 @@ class SoundMapBridge(GstBridgeNode):
         送出側で引き伸ばしても増えない。拡大は受け側（ブラウザの CSS、
         PC-D の前処理）でやればよく、そのほうが符号化する画素数が
         285 分の 1 で済む。
-        SOUNDMAP_SEND_WIDTH に 0 以外を入れると、その大きさに拡大して送る。
         """
-        w = env_int("SOUNDMAP_SEND_WIDTH", 0)
         hz = self.map_hz
         rtmp = (
             f"rtmp://{env('PC_C_IP', '127.0.0.1')}:{env('OME_RTMP_PORT', '1935')}"
@@ -140,15 +121,11 @@ class SoundMapBridge(GstBridgeNode):
         # 止まると、appsink のコールバック（生データの記録も含む）ごと
         # 巻き込まれる。queue も leaky にして、送出が詰まっても
         # 生成と記録は走り続けるようにする。
-        scale = (
-            f"! videoscale method=nearest-neighbour ! video/x-raw,width={w},height={w} "
-            if w else ""
-        )
         desc = (
             f"appsrc name=mapsrc is-live=true do-timestamp=true format=time "
             f"block=false max-bytes=4000000 "
             f"! queue max-size-buffers=5 leaky=downstream "
-            f"! videoconvert {scale}"
+            f"! videoconvert "
             f"! x264enc tune=zerolatency speed-preset=ultrafast "
             f"bitrate={env_int('SOUNDMAP_BITRATE', 2000)} key-int-max={hz} "
             # appsrc から来るのは BGR / GRAY8 なので、放っておくと x264enc が
@@ -165,27 +142,36 @@ class SoundMapBridge(GstBridgeNode):
         self.send_pipeline.set_state(Gst.State.PLAYING)
 
     def _push_to_ome(self, smap):
-        """float のマップに疑似カラーを付けて appsrc へ流す。
+        """マップを「黒地に黄色の斑点」の画にして appsrc へ流す。
 
-        灰色のまま操作画面に重ねると沈んで見えないので、送出側で色を付ける。
-        既存の可視化（generator-compare）と同じ inferno 系にしてある。
-        PC-D 側も同じ色で受け取るので、VLM に食わせる画も揃う。
+        表現は `soundmap-generator/soundmap-video/bag2video.py`（QC 動画）と
+        同じにしてある。あちらの `labeling.transform_sm` / `sm_to_color`:
+
+            v   = exp(smap - smap.max())        正規化
+            BGR = [0, v, v]                     黒地に黄色
+
+        **min-max 正規化ではなく exp を使うこと。** 生成器の GAIN=50 は
+        この exp 変換に掛けた後の「見える画素」の割合が FFT 版と同程度に
+        なるよう較正されている（onebit_soundmap.py の GAIN のコメント）。
+        min-max に替えると較正が外れ、静かな場面でも画面いっぱいの熱図に
+        なって「どこが鳴っているか」が読めなくなる。
+
+        背景が黒なので、操作画面側は screen 合成で重ねる。黒い所は
+        カメラ映像がそのまま素通りし、黄色の斑点だけが乗る
+        （bag2video の `cv2.addWeighted` と同じ見え方。static/css/style.css）。
+        PC-D も同じ画を受け取るので、VLM に食わせる画が操作者の見る物と揃う。
         """
         if self.mapsrc is None:
             return
-        lo, hi = float(smap.min()), float(smap.max())
-        span = hi - lo if hi > lo else 1.0
-        gray = ((smap - lo) / span * 255.0).clip(0, 255).astype(np.uint8)
-        if _CV2 is not None:
-            img = _CV2.applyColorMap(gray, _CV2.COLORMAP_INFERNO)   # BGR
-            fmt = "BGR"
-        else:
-            img = gray
-            fmt = "GRAY8"
+        # 生成器が窓を満たせないときは全 0 が返る。その場合は変換しない
+        # （exp を掛けると一様な値になって、無音なのに一面が光る）。
+        v = np.exp(smap - smap.max()) if smap.max() > 0 else smap
+        v = (v * 255.0).clip(0, 255).astype(np.uint8)
+        img = np.stack([np.zeros_like(v), v, v], axis=-1)      # BGR = 黄
         h, w = img.shape[:2]
         if self._caps_set is False:
             caps = Gst.Caps.from_string(
-                f"video/x-raw,format={fmt},width={w},height={h},"
+                f"video/x-raw,format=BGR,width={w},height={h},"
                 f"framerate={self.map_hz}/1"
             )
             self.mapsrc.set_property("caps", caps)
@@ -244,8 +230,6 @@ class SoundMapBridge(GstBridgeNode):
             self._generate(list(self.chunks), unix_ns)
 
     def _generate(self, chunks, unix_ns):
-        import time
-
         t0 = time.monotonic()
         try:
             smap = self.gen.generate(chunks)
@@ -256,8 +240,10 @@ class SoundMapBridge(GstBridgeNode):
         self.n_map += 1
 
         smap = np.asarray(smap, dtype=np.float32)
-        # header を持たない型なので、時刻は soundmap/stamp に別途出す。
-        # bag の log_time でも追えるが、生成に使った音声の時刻はこちら。
+        # Float32MultiArray は header を持たないので、**このマップだけは
+        # 採取時刻を載せる場所が無い。** bag では log_time（publish 時刻）で
+        # 見る。生成は 7.8 ms/枚 なので採取時刻とのずれはその程度に収まる。
+        # 厳密に要るようになったら自作 msg を足す（teleop-architecture §5.2）。
         msg = Float32MultiArray()
         msg.layout.dim = [
             MultiArrayDimension(label="rows", size=smap.shape[0],

@@ -66,7 +66,7 @@ _CAND_RE = re.compile(
 class OmeReceiver:
     def __init__(self, host, port, app, stream,
                  on_video=None, on_audio=None, logger=None,
-                 prefer_signalling_host=True, use_turn=False,
+                 prefer_signalling_host=True,
                  latency_ms=100, retry_sec=5.0, video_format=None,
                  audio_caps=None):
         """
@@ -80,9 +80,6 @@ class OmeReceiver:
             この系ではメディアは必ず signalling と同じホストから出る
             （OME は 10000-10004/udp を 0.0.0.0 で待ち受ける）ので、
             OME の申告よりこちらのほうが確実。
-        use_turn:
-            offer の iceServers（OME 内蔵 TURN, TCP）を使う。UDP が通らない
-            ネットワーク用の逃げ道。既定は無効。
         latency_ms:
             webrtcbin の jitterbuffer。遠隔操作なので既定を短めにしてある。
         retry_sec:
@@ -102,7 +99,6 @@ class OmeReceiver:
         self.on_audio = on_audio
         self.log = logger or (lambda level, msg: print(f"[{level}] {msg}", flush=True))
         self.prefer_signalling_host = prefer_signalling_host
-        self.use_turn = use_turn
         self.latency_ms = latency_ms
         self.retry_sec = retry_sec
         self.video_format = video_format
@@ -403,46 +399,6 @@ class OmeReceiver:
         except Exception:
             return self.host
 
-    def _rewrite_turn_host(self, rest):
-        """`host:port?transport=tcp` の host を signalling で繋いだ先に替える。
-
-        candidate と同じ理由。OME が iceServers に載せてくるのも起動時に
-        列挙した住所なので、そのまま使うと届かない。SSH のポート転送や
-        VPN 越しに使うときは**必ず**こちらでないと繋がらない
-        （OME は自分がトンネルの向こうから見えている住所を知らない）。
-        """
-        if not self.prefer_signalling_host or not self._media_host:
-            return rest
-        if rest.startswith("["):                 # [IPv6]:port
-            end = rest.find("]")
-            host, tail = rest[: end + 1], rest[end + 1:]
-        else:
-            host, sep, rem = rest.partition(":")
-            tail = sep + rem
-        if host == self._media_host:
-            return rest
-        self.log("info", f"TURN のアドレスを差し替え: {host} -> {self._media_host}")
-        return self._media_host + tail
-
-    def _setup_turn(self, data):
-        servers = data.get("iceServers") or data.get("ice_servers") or []
-        seen = set()
-        for s in servers:
-            user = s.get("username") or s.get("user_name") or ""
-            cred = s.get("credential") or ""
-            for url in s.get("urls", []) or []:
-                # turn:host:port?transport=tcp -> turn://user:cred@host:port?transport=tcp
-                if not url.startswith("turn:"):
-                    continue
-                rest = self._rewrite_turn_host(url[len("turn:"):])
-                if rest in seen:      # 書き換えると複数の URL が同じ物になる
-                    continue
-                seen.add(rest)
-                uri = (f"turn://{GLib.uri_escape_string(user, None, False)}:"
-                       f"{GLib.uri_escape_string(cred, None, False)}@{rest}")
-                if self.webrtc.emit("add-turn-server", uri):
-                    self.log("info", f"TURN を追加: {rest}")
-
     # ---- メディア ----
 
     def _set_if_supported(self, name, value):
@@ -460,7 +416,7 @@ class OmeReceiver:
         self.webrtc.connect(f"notify::{prop}", handler)
         return True
 
-    def _build_pipeline(self, data):
+    def _build_pipeline(self, _data):
         if self.pipeline is not None:
             return
         self._media_host = self._resolve_media_host()
@@ -480,8 +436,6 @@ class OmeReceiver:
         self.webrtc.connect("pad-added", self._on_pad_added)
         self._connect_if_supported("ice-connection-state", self._on_ice_state)
         self._connect_if_supported("connection-state", self._on_conn_state)
-        if self.use_turn:
-            self._setup_turn(data)
 
         bus = self.pipeline.get_bus()
         bus.add_watch(GLib.PRIORITY_DEFAULT, self._on_bus, None)
@@ -585,11 +539,6 @@ if __name__ == "__main__":
     ap.add_argument("--port", type=int, default=3333)
     ap.add_argument("--app", default="app")
     ap.add_argument("--seconds", type=float, default=10.0)
-    ap.add_argument("--turn", action="store_true", help="OME 内蔵 TURN(TCP) を使う")
-    ap.add_argument("--keep-candidates", action="store_true",
-                    help="OME の候補アドレスを書き換えない")
-    ap.add_argument("--snapshot", metavar="PATH",
-                    help="最初の 1 フレームを PPM で保存して中身を確かめる")
     ap.add_argument("-v", "--verbose", action="store_true", help="SDP まで出す")
     a = ap.parse_args()
 
@@ -598,24 +547,7 @@ if __name__ == "__main__":
             return
         print(f"[{level}] {msg}", flush=True)
 
-    saved = []
-
-    def on_video(data, sample):
-        if not a.snapshot or saved:
-            return
-        s = sample.get_caps().get_structure(0)
-        w, h = s.get_value("width"), s.get_value("height")
-        with open(a.snapshot, "wb") as f:
-            f.write(f"P6\n{w} {h}\n255\n".encode())
-            f.write(data[:w * h * 3])
-        saved.append(True)
-        print(f"[info] {a.snapshot} に保存した（{w}x{h}）", flush=True)
-
-    rx = OmeReceiver(a.host, a.port, a.app, a.stream,
-                     on_video=on_video if a.snapshot else None,
-                     logger=logger, use_turn=a.turn,
-                     prefer_signalling_host=not a.keep_candidates,
-                     video_format="RGB" if a.snapshot else None)
+    rx = OmeReceiver(a.host, a.port, a.app, a.stream, logger=logger)
     rx.start()
     t0 = time.time()
     last = (0, 0)

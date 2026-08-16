@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PC-D の 4 入力を OME からまとめて受ける（設計 §4.1）。
+"""PC-D の 4 入力を OME からまとめて受ける。
 
     <robot>stream    映像（Xacti）        場面理解
     <robot>soundmap  音響マップ           誰が喋っているかの手がかり
@@ -9,7 +9,7 @@
 4 本とも `common/ome_receiver.py` で受ける。OmeReceiver はインスタンスごとに
 専用の GLib.MainContext を持つので、1 プロセスで並行して回せる。
 
-**ここでは記録しない。** 記録は PC-B の bag だけ（設計 §5.1）。
+**ここでは記録しない。** 記録は PC-B の bag だけ。
 こちらが持つのは「いま最新の 1 枚」だけで、履歴は溜めない。推論が
 間に合わなければ黙って古い枚を捨てる（`latest()` は常に最新を返す）。
 
@@ -27,7 +27,7 @@ import threading
 import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(_HERE, "..", "..", "common"))
+sys.path.insert(0, os.path.join(_HERE, "..", "common"))
 
 from ome_receiver import OmeReceiver  # noqa: E402
 
@@ -107,14 +107,11 @@ class OmeInputs:
         "operator": ("STREAM_KEY_OPERATOR_MIC", "operatormic", "audio"),
     }
 
-    def __init__(self, host=None, port=None, app=None, only=None, logger=None,
-                 use_turn=None):
-        # OME_HOST は SSH トンネル越しなら 127.0.0.1 になる（config.env 参照）
+    def __init__(self, host=None, port=None, app=None, only=None, logger=None):
+        # PC-C の tailscale アドレス（pc-d-server/config.env の OME_HOST）
         self.host = host or env("OME_HOST") or env("PC_C_IP", "127.0.0.1")
         self.port = int(port or env("OME_WS_PORT", "3333"))
         self.app = app or env("OME_APP", "app")
-        self.use_turn = (env("OME_USE_TURN", "0") == "1"
-                         if use_turn is None else use_turn)
         self.log = logger or (lambda lv, m: print(f"[{lv}] {m}", flush=True))
 
         self._lock = threading.Lock()
@@ -147,7 +144,6 @@ class OmeInputs:
             logger=lambda lv, m, _s=stream: self.log(lv, f"[{_s}] {m}"),
             # 推論に食わせるので RGB で受ける
             video_format="RGB" if is_video else None,
-            use_turn=self.use_turn,
         )
 
     @staticmethod
@@ -155,7 +151,7 @@ class OmeInputs:
         """到着時刻（PC-D のローカル時計）。
 
         記録の基準時計は PC-B なので、ここの時刻は「何秒前の画か」を
-        知るためだけに使う。bag には残らない（設計 §5.1）。
+        知るためだけに使う。bag には残らない。
         """
         return time.clock_gettime_ns(time.CLOCK_REALTIME)
 
@@ -214,16 +210,12 @@ if __name__ == "__main__":
     ap.add_argument("--host", default=None, help="既定は OME_HOST（無ければ PC_C_IP）")
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--app", default=None)
-    ap.add_argument("--turn", action="store_true", default=None,
-                    help="OME 内蔵 TURN(TCP) を使う。既定は OME_USE_TURN")
     ap.add_argument("--only", nargs="*", default=None,
                     help="stream soundmap mic operator のうち受けるものだけ")
     ap.add_argument("--seconds", type=float, default=20.0)
-    ap.add_argument("--snapshot-dir", default=None,
-                    help="最後に受けた映像をここに PPM で保存する")
     a = ap.parse_args()
 
-    inp = OmeInputs(a.host, a.port, a.app, only=a.only, use_turn=a.turn)
+    inp = OmeInputs(a.host, a.port, a.app, only=a.only)
     inp.start()
 
     t0 = time.time()
@@ -236,20 +228,6 @@ if __name__ == "__main__":
             mark = "OK " if s["connected"] and n else ".. "
             parts.append(f"{mark}{key}={n}({age})")
         print(f"  {time.time()-t0:5.1f}s  " + "  ".join(parts), flush=True)
-
-    if a.snapshot_dir:
-        os.makedirs(a.snapshot_dir, exist_ok=True)
-        for key in ("stream", "soundmap"):
-            f = inp.latest_video(key)
-            if f is None:
-                continue
-            path = os.path.join(a.snapshot_dir, f"{key}.ppm")
-            arr = f.array()
-            with open(path, "wb") as fp:
-                fp.write(f"P6\n{f.width} {f.height}\n255\n".encode())
-                fp.write(arr.tobytes() if arr is not None
-                         else f.data[: f.width * f.height * 3])
-            print(f"  {path} ({f.width}x{f.height})", flush=True)
 
     inp.stop()
     ok = all(s["video"] + s["audio"] > 0 for s in inp.stats().values())
