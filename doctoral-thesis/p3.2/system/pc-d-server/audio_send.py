@@ -103,7 +103,30 @@ def main():
     # 音声 2 本だけ。映像はいま使わないので繋がない（無駄に復号しない）。
     inp = OmeInputs(only=["mic", "operator"], audio_caps=ASR_CAPS,
                     logger=lambda lv, m: log(lv.upper(), m))
-    inp.add_audio_sink(lambda key, a: link.send(key, a.data, a.unix_ns))
+
+    # **実際に届いた形を 1 回だけ確かめる。** asr.py は 16 kHz 単声道の
+    # 決め打ちで、レートが違っても例外は出ない ── whisper が別の速さの音
+    # として読み、区切りの秒数も全部ずれる。**それらしい文字が出てくるので
+    # 気付けない**（3 倍速の音を無理に読んだ結果が返る）。
+    ok_by_key = {}
+
+    def on_audio(key, a):
+        ok = ok_by_key.get(key)
+        if ok is None:                     # その音源の最初の 1 個だけ調べる
+            ok = (a.rate == 16000 and a.channels == 1)
+            ok_by_key[key] = ok
+            if ok:
+                log("INFO", f"{key}: {a.rate} Hz {a.channels}ch を確認")
+            else:
+                log("ERROR", f"{key}: {a.rate} Hz {a.channels}ch で届いている。"
+                             f"16000 Hz 1ch のはず ── audio_caps が効いていない。"
+                             f"**この音源は送らない**（流すと壊れた文字起こしに"
+                             f"なるだけで、エラーにはならない）")
+        if not ok:
+            return
+        link.send(key, a.data, a.unix_ns)
+
+    inp.add_audio_sink(on_audio)
 
     def _bye(signum, _frame):
         log("INFO", f"signal {signum} を受けた。終了する")

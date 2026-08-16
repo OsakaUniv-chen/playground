@@ -12,8 +12,10 @@ distro も違う（PC-D は galactic、PC-B / PC-C は humble で既定の RMW �
 素の TCP で PC-C へ送り、向こうで ROS に載せ替える。おかげで
 **この機械に ROS を入れる必要が無い**（受信側 recv_ome.py も rclpy 不要）。
 
-接続先は PC-C から張った SSH トンネルの出口なので既定は 127.0.0.1。
-`HEAD_RELAY_HOST` / `HEAD_RELAY_PORT` で変えられる。
+接続先は **PC-C の tailscale アドレス**（`config.env` の `HEAD_RELAY_HOST` /
+`HEAD_RELAY_PORT`）。**既定値は持たない** ── 未設定なら起動時に落ちる。
+以前は PC-C から張った SSH トンネルの出口（127.0.0.1）を指していたが、
+Tailscale で直接繋がるようになってトンネルは要らなくなった。
 
 可動域制限と smoothing は PC-B の head_driver が掛ける。**こちらは
 制限を知らずに指令を出してよい。** 適用後の値は topic に出ないので、
@@ -55,6 +57,17 @@ class HeadClient:
         try:
             s = socket.create_connection((self.host, self.port), timeout=3.0)
             s.settimeout(3.0)
+            # **半開きの接続を TCP に検出させる。** ここは値が変わったときしか
+            # 送らないので、相手が消えても何分も気付かない。しかも半開きの
+            # ソケットは送信バッファが埋まるまで **エラー無しで書けてしまう**
+            # ので、送ったつもりの指令が黙って消える。keepalive を入れておくと
+            # 次の send で失敗し、繋ぎ直せる（PC-C の head_relay 側にも同じ
+            # 設定を入れてある）。
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            for opt, val in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 10),
+                             ("TCP_KEEPCNT", 3)):
+                if hasattr(socket, opt):
+                    s.setsockopt(socket.IPPROTO_TCP, getattr(socket, opt), val)
             self.sock = s
             self.log(f"head_relay へ接続: {self.host}:{self.port}")
             return True

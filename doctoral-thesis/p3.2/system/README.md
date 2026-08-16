@@ -114,6 +114,7 @@ OME・WebRTC・ROS・bag）は全部本物が走る ── だから下の表が
 | **頭部指令 PC-D → PC-C → ROS** | `publish_goal(12.4,-33.6)` → `head/command [12,-34,0]`。同値は送らない |
 | **送出が後から立ち上がる場合** | 受信側が 5 s ごとに繋ぎ直して拾う（起動順は不問） |
 | **理研の PC-D との遠隔** | Tailscale 直結で往復 75 ms・37〜46 Mbps |
+| **PC-D の文字起こし**（3090） | medium/float16 が VRAM 2.5 GB・**43x 実時間**。11 秒の音声を停止位置で 4 発話に切って書き起こし。PC-C のマイクが OME 経由で 16 kHz 単声道で到達。**人の声では未確認**（[todo-list.md](todo-list.md)） |
 
 OME まわりの loopback 以外の確認は [todo-list.md](todo-list.md) にある。
 
