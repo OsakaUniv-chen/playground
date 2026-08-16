@@ -25,10 +25,18 @@ from rclpy.node import Node
 from audio_common_msgs.msg import BoxieMotors
 
 ROBOT_NAME = os.environ["ROBOT_NAME"]   # 既定値は置かない（env.sh 必須）
-PORT = int(os.environ.get("UI_PORT", 7779))
+PORT = int(os.environ["UI_PORT"])
+
+# 画面に渡す OME の接続先。**ここを直書きしない。** ブラウザは PC-C と同一機
+# なので host は localhost で固定だが、port / app / stream key は
+# common/config.env が持つ（送出側の PC-B と必ず同じ値を使う）。
+OME_WS = (f"ws://localhost:{os.environ['OME_WS_PORT']}"
+          f"/{os.environ['OME_APP']}/")
+STREAM_KEY_MAIN = os.environ["STREAM_KEY_MAIN"]
+STREAM_KEY_SOUNDMAP = os.environ["STREAM_KEY_SOUNDMAP"]
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("UI_SECRET", "p32-teleop")
+app.config["SECRET_KEY"] = os.environ["UI_SECRET"]
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 
@@ -40,8 +48,8 @@ class TeleopPublisher(Node):
         # 腕の上げ下げ。角度は PC-B 側のパラメータで決まるので、
         # ここは「上げ／下げ」だけを送る。
         self.pub_arm = self.create_publisher(BoxieMotors, f"{ns}/arm/command", 10)
-        self.arm_up_deg = int(os.environ.get("ARM_UP_DEG", 0))
-        self.arm_down_deg = int(os.environ.get("ARM_DOWN_DEG", 45))
+        self.arm_up_deg = int(os.environ["ARM_UP_DEG"])
+        self.arm_down_deg = int(os.environ["ARM_DOWN_DEG"])
         self.get_logger().info(f"teleop_ui publishing under {ns}")
 
     def send_twist(self, linear_x, angular_z):
@@ -65,7 +73,13 @@ ros_node = None
 
 @app.route("/")
 def index():
-    return render_template("base.html", robot_name=ROBOT_NAME)
+    return render_template(
+        "base.html",
+        robot_name=ROBOT_NAME,
+        ome_ws=OME_WS,
+        stream_main=STREAM_KEY_MAIN,
+        stream_soundmap=STREAM_KEY_SOUNDMAP,
+    )
 
 
 @socketio.on("connect")

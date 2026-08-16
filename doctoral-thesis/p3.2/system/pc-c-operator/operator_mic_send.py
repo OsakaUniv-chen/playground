@@ -21,7 +21,16 @@ from rclpy.executors import ExternalShutdownException  # noqa: E402
 from rclpy.node import Node  # noqa: E402
 
 
-def env(k, d=""):
+def env(k, d=None):
+    """config.env が持つ項目には既定値を渡さない（二重定義にすると片方が古くなる）。"""
+    if d is None:
+        try:
+            return os.environ[k]
+        except KeyError:
+            raise RuntimeError(
+                f"{k} が未設定。env.sh を読まずに起動している"
+                f"（common/config.env か pc-c-operator/config.env が設定する）"
+            ) from None
     return os.environ.get(k, d)
 
 
@@ -29,27 +38,33 @@ class OperatorMicSender(Node):
     def __init__(self):
         super().__init__("operator_mic_sender")
         Gst.init(None)
-        ns = "/" + os.environ["ROBOT_NAME"]   # 既定値は置かない（env.sh 必須）
-        fake = env("USE_FAKE_SOURCES", "1") == "1"
+        ns = "/" + env("ROBOT_NAME")           # 既定値は置かない（env.sh 必須）
+        fake = env("USE_FAKE_SOURCES") == "1"
 
         src = (
             "audiotestsrc is-live=true wave=sine freq=440"
             if fake
-            else f"alsasrc device={env('OPERATOR_MIC_DEVICE', 'default')} buffer-time=200000"
+            else f"alsasrc device={env('OPERATOR_MIC_DEVICE')} buffer-time=200000"
         )
+        # 送出レートは OPERATOR_MIC_RATE（PC-B が記録するレート）ではない。
+        # OME が WebRTC 用に Opus へ変換する都合で 48 kHz を入れる。
         head = (
             f"{src} ! audioconvert ! audioresample "
-            f"! audio/x-raw,format=S16LE,rate=48000,channels=1 "
+            f"! audio/x-raw,format=S16LE,rate={env('OPERATOR_MIC_SEND_RATE')},"
+            f"channels={env('OPERATOR_MIC_CHANNELS')} "
         )
 
         rtmp = (
-            f"rtmp://{env('PC_C_IP', '127.0.0.1')}:{env('OME_RTMP_PORT', '1935')}"
-            f"/{env('OME_APP', 'app')}/"
-            f"{env('STREAM_KEY_OPERATOR_MIC', 'operatormic')} live=true"
+            f"rtmp://{env('PC_C_IP')}:{env('OME_RTMP_PORT')}"
+            f"/{env('OME_APP')}/"
+            f"{env('STREAM_KEY_OPERATOR_MIC')} live=true"
         )
+        # sync=false。live 送出なので実時間で届く。既定の sync=true だと
+        # rtmpsink がパイプライン latency ぶん抱え込んでから出すので、
+        # 操作者の声が機体のスピーカーに出るまでが延びるだけで得が無い。
         desc = (
             f"{head}! voaacenc bitrate=32000 ! aacparse "
-            f"! flvmux streamable=true ! rtmpsink location=\"{rtmp}\""
+            f"! flvmux streamable=true ! rtmpsink sync=false location=\"{rtmp}\""
         )
 
         self.get_logger().info(f"pipeline: {desc}")

@@ -49,7 +49,9 @@
 <script>
     // OME は同一機。ページが http なので ws（平文）で繋がる。
     // WebRTC のメディア自体は DTLS/SRTP なので平文にはならない。
-    const OME = "ws://localhost:3333/app/";
+    // 接続先と stream key は common/config.env の値を app.py が流し込む
+    // （ここに直書きすると送出側の PC-B と食い違う）。
+    const OME = "{{ ome_ws }}";
     const mkPlayer = (id, key, mute) => OvenPlayer.create(id, {
         autoStart: true, autoFallback: true, mute: mute, controls: false,
         sources: [{ type: "webrtc", file: OME + key }],
@@ -57,8 +59,8 @@
     });
 
     // 下: カメラ（音声つき）  上: 音響マップ
-    const playerCam = mkPlayer("player-cam", "{{ robot_name }}stream", false);
-    const playerMap = mkPlayer("player-soundmap", "{{ robot_name }}soundmap", true);
+    const playerCam = mkPlayer("player-cam", "{{ stream_main }}", false);
+    const playerMap = mkPlayer("player-soundmap", "{{ stream_soundmap }}", true);
 
     // 音響マップは黒地に黄色の斑点として届く（soundmap_bridge.py）。
     // style.css で mix-blend-mode: screen を掛けてあるので、黒い所は

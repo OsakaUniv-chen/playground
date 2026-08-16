@@ -37,7 +37,16 @@ except ImportError:                    # numpy が無くても受信自体は動
     np = None
 
 
-def env(k, d=""):
+def env(k, d=None):
+    """config.env が持つ項目には既定値を渡さない（二重定義にすると片方が古くなる）。"""
+    if d is None:
+        try:
+            return os.environ[k]
+        except KeyError:
+            raise RuntimeError(
+                f"{k} が未設定。env.sh を読まずに起動している"
+                f"（common/config.env か pc-d-server/config.env が設定する）"
+            ) from None
     return os.environ.get(k, d)
 
 
@@ -99,29 +108,31 @@ class Audio:
 class OmeInputs:
     """4 本の受信をまとめて持ち、それぞれの「最新」を保持する。"""
 
-    #  key       -> (環境変数, 既定の stream key, 種別)
+    #  key       -> (環境変数, 種別)
+    #  stream key の実体は common/config.env が持つ（ここに既定値を書くと
+    #  送出側の PC-B と食い違ったまま「繋がらない」だけになる）。
     STREAMS = {
-        "stream":   ("STREAM_KEY_MAIN", "boxiestream", "video"),
-        "soundmap": ("STREAM_KEY_SOUNDMAP", "boxiesoundmap", "video"),
-        "mic":      ("STREAM_KEY_MIC", "boxiemic", "audio"),
-        "operator": ("STREAM_KEY_OPERATOR_MIC", "operatormic", "audio"),
+        "stream":   ("STREAM_KEY_MAIN", "video"),
+        "soundmap": ("STREAM_KEY_SOUNDMAP", "video"),
+        "mic":      ("STREAM_KEY_MIC", "audio"),
+        "operator": ("STREAM_KEY_OPERATOR_MIC", "audio"),
     }
 
     def __init__(self, host=None, port=None, app=None, only=None, logger=None):
         # PC-C の tailscale アドレス（pc-d-server/config.env の OME_HOST）
-        self.host = host or env("OME_HOST") or env("PC_C_IP", "127.0.0.1")
-        self.port = int(port or env("OME_WS_PORT", "3333"))
-        self.app = app or env("OME_APP", "app")
+        self.host = host or env("OME_HOST")
+        self.port = int(port or env("OME_WS_PORT"))
+        self.app = app or env("OME_APP")
         self.log = logger or (lambda lv, m: print(f"[{lv}] {m}", flush=True))
 
         self._lock = threading.Lock()
         self._latest = {}
         self.rx = {}
 
-        for key, (var, default, kind) in self.STREAMS.items():
+        for key, (var, kind) in self.STREAMS.items():
             if only and key not in only:
                 continue
-            self.rx[key] = self._make(key, env(var, default), kind)
+            self.rx[key] = self._make(key, env(var), kind)
 
     def _make(self, key, stream, kind):
         def on_video(data, sample, _k=key):
@@ -207,7 +218,7 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser(description="PC-D の 4 入力を OME から受ける")
-    ap.add_argument("--host", default=None, help="既定は OME_HOST（無ければ PC_C_IP）")
+    ap.add_argument("--host", default=None, help="既定は config.env の OME_HOST")
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--app", default=None)
     ap.add_argument("--only", nargs="*", default=None,

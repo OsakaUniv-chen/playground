@@ -49,15 +49,16 @@ except ImportError as e:
 class SoundMapBridge(GstBridgeNode):
     def __init__(self):
         self.ns = robot_ns()
-        self.channels = env_int("MIC_ARRAY_CHANNELS", 16)
-        self.rate = env_int("MIC_ARRAY_RATE", 44100)
-        self.ms_per_msg = env_int("MIC_ARRAY_MS_PER_MSG", 10)
+        self.channels = env_int("MIC_ARRAY_CHANNELS")
+        self.rate = env_int("MIC_ARRAY_RATE")
+        self.ms_per_msg = env_int("MIC_ARRAY_MS_PER_MSG")
         # 生成周期と積分窓は別物。窓は周期より長く取り、毎回ずらして使う。
         # 1-bit 相関器は積分時間で S/N と空間分解能を稼ぐ一方、計算量も
         # 窓の長さにほぼ比例する。
         # word-wolf の実測条件: 160 msg × 128 sample/ch @44.1 kHz = 464 ms。
-        self.map_hz = env_int("SOUNDMAP_HZ", 10)
-        self.window_ms = env_int("SOUNDMAP_WINDOW_MS", 464)
+        self.map_hz = env_int("SOUNDMAP_HZ")
+        self.window_ms = env_int("SOUNDMAP_WINDOW_MS")
+        self.sm_size = env_int("SOUNDMAP_SIZE")
         super().__init__("soundmap_bridge")
 
         # --- 生データ（記録のみ。外へは出さない）---
@@ -70,10 +71,16 @@ class SoundMapBridge(GstBridgeNode):
         )
 
         if HAVE_GENERATOR:
-            self.gen = OneBitSoundMapAPI()
+            # 生成器にも config.env の値をそのまま渡す。渡さないと生成器側の
+            # 既定（fs=44100 / channels=16）で遅延テーブルを組んでしまい、
+            # config.env でレートを変えても**誤差無しで間違ったマップ**が
+            # 出続ける（caps と窓計算だけが新しいレートになるため）。
+            self.gen = OneBitSoundMapAPI(
+                fs=self.rate, channels=self.channels, sm_size=self.sm_size
+            )
             self.get_logger().info(
                 f"1-bit 音響マップ: {self.channels}ch {self.rate}Hz / "
-                f"{self.map_hz} Hz 生成・窓 {self.window_ms} ms"
+                f"{self.map_hz} Hz 生成・窓 {self.window_ms} ms・{self.sm_size}px"
             )
         else:
             self.gen = None
@@ -114,8 +121,8 @@ class SoundMapBridge(GstBridgeNode):
         """
         hz = self.map_hz
         rtmp = (
-            f"rtmp://{env('PC_C_IP', '127.0.0.1')}:{env('OME_RTMP_PORT', '1935')}"
-            f"/{env('OME_APP', 'app')}/{env('STREAM_KEY_SOUNDMAP', 'soundmap')} live=true"
+            f"rtmp://{env('PC_C_IP')}:{env('OME_RTMP_PORT')}"
+            f"/{env('OME_APP')}/{env('STREAM_KEY_SOUNDMAP')} live=true"
         )
         # appsrc は block=false。RTMP 先が居ないときに push-buffer が
         # 止まると、appsink のコールバック（生データの記録も含む）ごと
@@ -127,14 +134,17 @@ class SoundMapBridge(GstBridgeNode):
             f"! queue max-size-buffers=5 leaky=downstream "
             f"! videoconvert "
             f"! x264enc tune=zerolatency speed-preset=ultrafast "
-            f"bitrate={env_int('SOUNDMAP_BITRATE', 2000)} key-int-max={hz} "
+            f"bitrate={env_int('SOUNDMAP_BITRATE')} key-int-max={hz} "
             # appsrc から来るのは BGR / GRAY8 なので、放っておくと x264enc が
             # High 4:4:4 (Y444) を選ぶ。ブラウザはこれを復号できず、OME は
             # bypass なので SDP には baseline (42e01f) と書いたまま配る。
             # 結果、操作画面のマップだけが黙って映らなくなる。
             f"! video/x-h264,profile=baseline "
             f"! h264parse config-interval=-1 "
-            f"! flvmux streamable=true ! rtmpsink location=\"{rtmp}\""
+            # sync=false。cam_bridge の映像側と揃える。片方だけ sync=true だと
+            # rtmpsink が抱え込む時間が違い、**画面上でマップが映像からずれる**
+            # （この 2 本は操作画面で重ねて表示される）。
+            f"! flvmux streamable=true ! rtmpsink sync=false location=\"{rtmp}\""
         )
         self.get_logger().info(f"送出: {desc}")
         self.send_pipeline = Gst.parse_launch(desc)
@@ -184,7 +194,7 @@ class SoundMapBridge(GstBridgeNode):
             )
 
     def build_pipeline(self) -> str:
-        fake = env_bool("USE_FAKE_SOURCES", True)
+        fake = env_bool("USE_FAKE_SOURCES")
         latency_us = self.ms_per_msg * 1000
         spb = self.rate * self.ms_per_msg // 1000
 
@@ -192,15 +202,15 @@ class SoundMapBridge(GstBridgeNode):
             src = f"audiotestsrc is-live=true wave=ticks samplesperbuffer={spb} ! audioconvert"
         else:
             src = (
-                f"alsasrc device={env('MIC_ARRAY_DEVICE', 'hw:CARD=UMA16v2,DEV=0')} "
+                f"alsasrc device={env('MIC_ARRAY_DEVICE')} "
                 f"buffer-time=200000 latency-time={latency_us}"
             )
         hw_caps = (
-            f"audio/x-raw,format={env('MIC_ARRAY_HW_FORMAT', 'S32LE')},"
+            f"audio/x-raw,format={env('MIC_ARRAY_HW_FORMAT')},"
             f"rate={self.rate},channels={self.channels}"
         )
         caps = (
-            f"audio/x-raw,format={env('MIC_ARRAY_FORMAT', 'S16LE')},"
+            f"audio/x-raw,format={env('MIC_ARRAY_FORMAT')},"
             f"rate={self.rate},channels={self.channels}"
         )
         # 送出用の tee は無い。16ch はここから外に出ない。

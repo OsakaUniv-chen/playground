@@ -11,34 +11,45 @@ pc-c-operator/   操作者端末 — OME・操作 UI・マイク送出・頭部�
 pc-d-server/     高性能サーバ — 推論（入力は揃っている・判断は未実装）
 ```
 
-起動方法は PC ごとの README にある（PC-B は `ros2 launch`、PC-C は `./run.sh`）。
-**OME が立ってから PC-B を起動する**という順序だけは守る（設計 §0.2）。
+## 1. 配って動かすまで
 
-## 1. 準備
+**手順は PC ごとの README に全部入っている**（フォルダを置く → 依存 → 設定 →
+起動、の 4 段）。ここに置くのは全体の対応表と、複数の PC で共通に踏む罠だけ。
 
-### 1.1 設定を埋める
+### 1.1 どのフォルダをどの PC に置くか
+
+| PC | 置くフォルダ | 手順 |
+|---|---|---|
+| PC-A サイネージ | `pc-a-signage/` | [pc-a-signage/README.md](pc-a-signage/README.md) |
+| PC-B ロボット | `common/` + `pc-b-robot/` | [pc-b-robot/README.md](pc-b-robot/README.md) |
+| PC-C 操作者 | `common/` + `pc-c-operator/` | [pc-c-operator/README.md](pc-c-operator/README.md) |
+| PC-D サーバ | `common/` + `pc-d-server/` | [pc-d-server/README.md](pc-d-server/README.md) |
+
+**`common/` は必ず一緒に配り、相対位置を変えない。** 各 PC の `env.sh` は
+`../common/config.env` を、PC-B の `operator_mic_bridge.py` と PC-D の
+`recv_ome.py` は `common/ome_receiver.py` を相対パスで引く。置き場所自体は
+自由だが、下のように並べる:
+
+```
+~/p32/common/          ~/p32/pc-b-robot/        （PC-B）
+~/p32/common/          ~/p32/pc-c-operator/     （PC-C）
+~/p32/common/          ~/p32/pc-d-server/       （PC-D）
+```
+
+PC-A だけは他と繋がらないので `pc-a-signage/` 単体でよい。
+
+### 1.2 設定を埋める
 
 `common/config.env` の **★**（PC-C の IP）と各 PC の `config.env` の **★**
 （デバイス名）を現地で確認して書く。確認方法は [todo-list.md](todo-list.md)。
 
-### 1.2 依存
+**`config.env` が設定の唯一の出所。** 各スクリプトは既定値を持たず、未設定なら
+起動時に落ちる。コード側に既定値を二重に書かないこと。
 
-```bash
-# 全 PC
-sudo apt install ros-humble-desktop \
-    gstreamer1.0-tools gstreamer1.0-plugins-{base,good,bad,ugly} \
-    gstreamer1.0-libav python3-gi v4l-utils
+**ハードを繋ぐか繋がないかは `common/config.env` の `USE_FAKE_SOURCES` だけで
+決まる**（既定 `0` = 実デバイス。起動コマンドは変えない。§2 参照）。
 
-sudo apt install gstreamer1.0-nice          # PC-B と PC-D（OME から受ける側）
-
-# PC-B
-sudo apt install ros-humble-rosbag2-storage-mcap ros-humble-foxglove-msgs \
-    gstreamer1.0-vaapi intel-media-va-driver
-pip install paho-mqtt pykeigan_motor
-
-# PC-C
-pip install flask flask-socketio
-```
+### 1.3 依存で踏む罠
 
 **`gstreamer1.0-nice` は OME からの受信に必須。** `libnice10` だけでは足りない ──
 webrtcbin は libnice を直接リンクするが、ICE の実体は `nicesrc`/`nicesink` という
@@ -46,24 +57,49 @@ webrtcbin は libnice を直接リンクするが、ICE の実体は `nicesrc`/`
 失敗する。確認は `gst-inspect-1.0 nicesrc`。要るのは **webrtcbin を動かす PC-B と
 PC-D**（PC-C の OME は原生バイナリで gst を使わない）。
 
-`audio_common_msgs` は `~/ros2_ws` にある。**apt の `ros-humble-audio-common-msgs`
-（4.x）は型定義が別物なので入れない。**
+**`audio_common_msgs` は `~/ros2_ws` にある沿用版を使う。** `AudioDataStamped` /
+`BoxieMotors` / `BoxieStatus` はこの版にしか無い。**apt の
+`ros-humble-audio-common-msgs`（4.x）は型定義が別物なので入れない。** 要るのは
+ROS を使う **PC-B と PC-C**。
 
-```bash
-cp -r common/p3_msgs ~/ros2_ws/src/ && cd ~/ros2_ws && colcon build --packages-select p3_msgs
-```
+**自作 msg `p3_msgs`（`ClockOffset`）を使うのは PC-B だけ**（`clock_node.py`）。
+PC-C は ROS を使うが `p3_msgs` は要らない。
 
-PC-C は `pc-c-operator/static/vendor/` に `socket.io.min.js` と `ovenplayer.js` を
-置く（CDN のままだと現地にインターネットが無い時に操作画面ごと落ちる）。
+**PC-C の `static/vendor/` は空で配られる。** `socket.io.min.js` と
+`ovenplayer.js` を接続のあるうちに落としておく（CDN のままだと現地に
+インターネットが無い時に操作画面ごと落ちる）。手順は PC-C の README。
+
+### 1.4 起動
+
+各 PC とも、置いたディレクトリで 1 本叩くだけ（`source` は各スクリプトが中でやる）:
+
+| PC | コマンド | 備考 |
+|---|---|---|
+| PC-C | `./run.sh` | **最初に立てる。** 背後に回るので `./run.sh status` / `stop` |
+| PC-B | `./run.sh` | **収録込み**。前面で動くので Ctrl-C で止める |
+| PC-D | `source env.sh && python3 recv_ome.py` | 順序は不問 |
+| PC-A | `./signage.sh` | 他と繋がらないのでいつでも |
+
+**OME が立ってから PC-B を起動する**（設計 §0.2）。つまり PC-C → PC-B。
+PC-D は送出側が未起動でも 5 s ごとに繋ぎ直すので、順序を気にしなくてよい。
+
+**PC-B は既定で収録する。** 出力は `RECORD_DIR/<起動時刻>/`（既定
+`~/p32/rosbags/`）で **10.2 GB/時**。空きの確認は起動時に `record.sh` が出す
+`df -h` で。要らないときは `./run.sh record:=false`。
 
 ## 2. センサが無い状態での確認
 
-`USE_FAKE_SOURCES=1`（既定）で `videotestsrc` / `audiotestsrc` に差し替わる。
+`common/config.env` の `USE_FAKE_SOURCES` を `1` にすると、カメラ・機体マイク・
+16ch マイクが `videotestsrc` / `audiotestsrc` に、スピーカーが `fakesink` に
+差し替わる。**差し替わるのはデバイスの口だけ**なので、符号化から先（RTMP・
+OME・WebRTC・ROS・bag）は全部本物が走る ── だから下の表が測れる。逆に言うと
+**`1` でも OME は立てておく必要がある。**
+
 以下は**実測で確認済み**。
 
 | 確認したこと | 結果 |
 |---|---|
-| 3 つの bridge が gst から ROS へ流す | video 30 fps / 16ch 100 Hz / 機体マイク 47 Hz |
+| bridge が gst から ROS へ流す | video 30 fps / 16ch 100 Hz / 機体マイク 47 Hz |
 | 映像の切り出し | 実機 MJPG 1920×1080 → 1080×1080 の H.264 |
 | 16ch の取り込みと帯域 | 実機 UMA16v2 で 16ch/44.1 kHz、全 ch に信号。11.31 Mbps（理論値と一致） |
 | 音響マップの生成 | 16.7 ms/枚・10 Hz 定常。送出先が居なくても生成と記録は止まらない |
@@ -78,6 +114,10 @@ PC-C は `pc-c-operator/static/vendor/` に `socket.io.min.js` と `ovenplayer.j
 | **理研の PC-D との遠隔** | Tailscale 直結で往復 75 ms・37〜46 Mbps |
 
 OME まわりの loopback 以外の確認は [todo-list.md](todo-list.md) にある。
+
+**上の実測は機体マイクを cam_bridge から切り出す前のもの。** 流れる topic と
+レートは変えていないが、プロセス構成と `rtmpsink sync=false` は測り直しが要る
+（todo-list.md の「機体マイクの分離」）。
 
 ```bash
 python3 common/ome_receiver.py <stream_key> --host <PC-C>   # 1 本だけ確かめる（-v で SDP）

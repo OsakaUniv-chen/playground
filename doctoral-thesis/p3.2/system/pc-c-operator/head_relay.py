@@ -12,7 +12,7 @@ humble で既定の RMW が違い（CycloneDDS / FastDDS）、distro 間通信�
 **PC-D 側に ROS が要らなくなる**。
 
 PC-D とは Tailscale で繋がっているので、**tailscale のアドレスで待ち受ける**
-（`HEAD_RELAY_BIND`、既定は 127.0.0.1 なので必ず設定すること）。
+（`pc-c-operator/config.env` の `HEAD_RELAY_BIND`。未設定なら起動時に落ちる）。
 PC-B は同じ LAN に居て PC-C としか話さないため、Tailscale は要らない。
 
 プロトコルは 1 行 1 指令の JSON:
@@ -34,8 +34,8 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 ROBOT_NAME = os.environ["ROBOT_NAME"]   # 既定値は置かない（env.sh 必須）
-PORT = int(os.environ.get("HEAD_RELAY_PORT", 7997))
-BIND = os.environ.get("HEAD_RELAY_BIND", "127.0.0.1")
+PORT = int(os.environ["HEAD_RELAY_PORT"])
+BIND = os.environ["HEAD_RELAY_BIND"]
 
 
 class HeadRelay(Node):

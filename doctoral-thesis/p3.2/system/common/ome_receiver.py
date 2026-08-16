@@ -534,10 +534,12 @@ if __name__ == "__main__":
     import time
 
     ap = argparse.ArgumentParser(description="OME から 1 本受けて統計を出す")
+    # 手で叩く確認用なので env.sh 無しでも動かせるようにしておく。
+    # 読まれていれば config.env の値がそのまま既定になる。
     ap.add_argument("stream")
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=3333)
-    ap.add_argument("--app", default="app")
+    ap.add_argument("--host", default=os.environ.get("OME_HOST", "127.0.0.1"))
+    ap.add_argument("--port", type=int, default=int(os.environ.get("OME_WS_PORT", 3333)))
+    ap.add_argument("--app", default=os.environ.get("OME_APP", "app"))
     ap.add_argument("--seconds", type=float, default=10.0)
     ap.add_argument("-v", "--verbose", action="store_true", help="SDP まで出す")
     a = ap.parse_args()

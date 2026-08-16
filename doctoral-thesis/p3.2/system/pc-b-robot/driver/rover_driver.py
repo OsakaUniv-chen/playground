@@ -49,8 +49,9 @@ class RoverDriver(Node):
         super().__init__("rover_driver")
         ns = "/" + os.environ["ROBOT_NAME"]
 
-        self.declare_parameter("mqtt_host", os.environ.get("ALI_MQTT_HOST", "192.168.4.2"))
-        self.declare_parameter("mqtt_port", int(os.environ.get("ALI_MQTT_PORT", 9075)))
+        # 既定値は置かない（env.sh 必須）。config.env と二重に持つと片方だけ古くなる。
+        self.declare_parameter("mqtt_host", os.environ["ALI_MQTT_HOST"])
+        self.declare_parameter("mqtt_port", int(os.environ["ALI_MQTT_PORT"]))
         self.declare_parameter("watchdog_sec", 0.5)
         self.declare_parameter("deadzone", 0.5)   # 沿用元と同じ閾値
         self.declare_parameter("use_mqtt", True)

@@ -34,8 +34,9 @@ class HeadClient:
     """PC-C の head_relay へ繋ぎ、切れたら勝手に繋ぎ直す。"""
 
     def __init__(self, host=None, port=None, retry_sec=5.0, log=print):
-        self.host = host or os.environ.get("HEAD_RELAY_HOST", "127.0.0.1")
-        self.port = int(port or os.environ.get("HEAD_RELAY_PORT", 7997))
+        # 既定値は置かない（env.sh 必須）。config.env と二重に持つと片方だけ古くなる。
+        self.host = host or os.environ["HEAD_RELAY_HOST"]
+        self.port = int(port or os.environ["HEAD_RELAY_PORT"])
         self.retry_sec = retry_sec
         self.log = log
         self.sock = None

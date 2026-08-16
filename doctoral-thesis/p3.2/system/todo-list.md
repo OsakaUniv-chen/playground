@@ -17,12 +17,19 @@
 | 〃 | `ONBOARD_MIC_CHANNELS` `_RATE` | 2ch / 48000 | `arecord -D <dev> --dump-hw-params` | 対応しない値だと caps 交渉に失敗してパイプラインが起動しない。用途は現場音を聞くことなので 16 kHz でも足りる |
 | `pc-b-robot/config.env` | `CAM_DEVICE` | `/dev/video0` | `ls -l /dev/v4l/by-path/` | `/dev/videoN` は起動順で変わるので **by-path か by-id を使う**。あわせて Xacti が MJPG 1920×1080@30 を出せるかを `v4l2-ctl --list-formats-ext` で見る |
 | 〃 | `ONBOARD_MIC_DEVICE` `SPEAKER_DEVICE` | `default` | `arecord -l` / `aplay -l` | 機体マイクとスピーカーが鳴らない |
-| 〃 | `ALI_MQTT_HOST` `_PORT` | `192.168.4.2:9075` | 下の rover_driver の節 | 台車が動かない |
-| 〃 | `RECORD_DIR` | `~/p32_bags` | `df -h` | **10.2 GB/時**（16ch 5.1 + 映像 3.6）。収録予定時間ぶんの空きが要る |
+| 〃 | `ARM_UP_DEG` `ARM_DOWN_DEG` | 0 / 45 度 | ボタンで上げ下げして「挙手」「下ろす」に見える角度に合わせる | 腕が中途半端な位置で止まる |
+| `pc-b-robot/config.env` | `ALI_MQTT_HOST` `_PORT` | `192.168.4.2:9075` | 下の rover_driver の節 | 台車が動かない |
+| 〃 | `ADDR_HEAD_*` `ADDR_*_ARM` | boxie_node の実機値 | `sudo hcitool lescan` | 該当のモータに繋がらない |
+| 〃 | `RECORD_DIR` | `~/p32/rosbags` | `df -h` | **10.2 GB/時**（16ch 5.1 + 映像 3.6）。収録予定時間ぶんの空きが要る |
 | `pc-c-operator/config.env` | `OPERATOR_MIC_DEVICE` | `default` | `arecord -l` | 操作者の声が出ない |
 
 映像パラメータ（1920×1080 / 30 fps）と 16ch アレイのパラメータは実機で確認済み。
-`OPERATOR_MIC_RATE` は調整不要（記録時のレート。伝送は Opus/RTP の 48000 固定）。
+`OPERATOR_MIC_RATE` は調整不要（記録時のレート。伝送は `OPERATOR_MIC_SEND_RATE`
+＝ Opus/RTP の 48000 固定）。
+
+**設定の出所は `config.env` だけ。** 各スクリプトは既定値を持たず、未設定なら
+起動時に落ちる。コード側に既定値を二重に書くと片方だけ直したときに黙って
+食い違うため（実際 `SOUNDMAP_BITRATE` が 500 と 2000 で割れていた）。
 
 ### USB の口を分ける ★
 
@@ -56,10 +63,25 @@ Xacti は **USB 2.0**（MJPG 1080p30 で 24〜40 Mbps）、UMA16v2 は 16ch 44.1
 | パラメータ | 既定値 | 確認方法 |
 |---|---|---|
 | `max_pitch` / `max_yaw` / `max_arm` | ±30 / ±60 / ±90 度 | **Xacti と 16ch アレイを載せた状態**で、機体やケーブルに当たらない範囲を実測 |
-| `arm_up_deg` / `arm_down_deg` | 0 / 45 度 | ボタンで上げ下げして「挙手」「下ろす」に見える角度に合わせる |
 | `speed` / `acceleration` / `torque` | 20.0 / 200.0 / 0.2 | カメラとアレイを載せると慣性が変わる |
-| `smooth_alpha` | 0.6 | VLM を繋いでから、首の振れ方を見て調整 |
-| BLE アドレス ★ | boxie_node の実機値 | `sudo hcitool lescan` |
+| `smooth_alpha` / `smooth_hz` | 0.25 / 10 Hz（tau=0.35 s） | VLM を繋いでから、首の振れ方を見て調整。**alpha は 1 tick あたり**なので、両方を見ないと効きが決まらない |
+
+腕の上げ下げの角度（`ARM_UP_DEG` / `ARM_DOWN_DEG`）と BLE アドレス
+（`ADDR_*`）は ROS パラメータではなく `config.env` にある。前者は指令元の
+PC-C が持ち、head_driver は受けた絶対角を `max_arm` で丸めるだけ。
+
+## 機体マイクの分離 ★（未検証）
+
+機体マイクを `cam_bridge.py` から `onboard_mic_bridge.py` に切り出し、
+全 `rtmpsink` を `sync=false` にした。流れる topic とレートは変えていないが、
+**この構成での実測がまだ無い**。
+
+| 見るところ | 期待 |
+|---|---|
+| `onboard_mic_bridge` が単独で件数を出すか | 10 秒ごとに audio 470 前後 |
+| **マイクを抜いた状態でカメラが生きるか** | これが分離した理由。`onboard_mic_bridge` だけが落ちて `camera/video` は流れ続ける |
+| `USE_FAKE_SOURCES=0` での往復 | 分離前は `alsasrc buffer-time=200000` が同じパイプラインに居た。**75 ms はフェイク源での値**なので実デバイスで測り直す |
+| 操作画面でマップが映像とずれないか | 2 本とも `sync=false` に揃えてある |
 
 ## `bridge/cam_bridge.py` ── iGPU が効くか ★（未検証）
 
@@ -139,6 +161,6 @@ gst-inspect-1.0 vaapih264enc && vainfo && ls -l /dev/dri/renderD128 && id
 |---|---|
 | **VLM の判断** | `pc-d-server/head_controller.py` の `decide()`。入力は `OmeInputs` から取れる状態。**あわせて「音響マップ上の位置 → yaw/pitch 何度」の対応付けを決める**（頭部の 0 度は起動時の姿勢） |
 | **回線が切れたときの頭部の挙動** | **未実装。** 台車には watchdog があるが頭部には無い。リンクが落ちたら現在姿勢を保つのか正面に戻すのかを決める |
-| 収録の一括開始・停止 | ROS topic を 1 本立てて開始・停止とセッション ID を揃える。今は PC-B 単独（`ros2 launch pcb.launch.py record:=true`） |
+| 収録の一括開始・停止 | ROS topic を 1 本立てて開始・停止とセッション ID を揃える。今は PC-B 単独（`./run.sh` が既定で録る） |
 | ジェスチャの割り当て | いまは腕の上げ／下げだけ |
 | 足元カメラ | UI は 2 系統置ける作りだが 2 本目は未接続 |

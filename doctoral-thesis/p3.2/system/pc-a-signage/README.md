@@ -3,13 +3,39 @@
 Linux 1 台の Chrome 全画面で、複数の Web ページを 10 秒ずつ巡回表示する。
 **他の PC とは繋がらない**（設計 §1）ので、この系だけで完結している。
 
+## 1. フォルダを置く
+
+**このフォルダだけ**でよい。他の PC と違い `common/` は要らない
+（`config.env` も ROS も OME も使わない）。手元の `system/` で:
+
+```bash
+rsync -a pc-a-signage <user>@<PC-A の IP>:~/p32/
+```
+
+`signage.sh` と `urls.conf` は同じディレクトリに置く（スクリプトが自分の
+位置から `urls.conf` を引く）。
+
+## 2. 依存を入れる
+
 ```bash
 sudo apt install -y wmctrl xdotool     # X11 前提。Wayland では動かない
+```
 
+Chrome 本体（`google-chrome`）も要る。**chromium ではない** ── `signage.sh` は
+`BROWSER=google-chrome` を決め打ちしており、`--user-data-dir` でウィンドウごとに
+プロファイルを分ける前提になっている。
+
+## 3. 起動
+
+```bash
+cd ~/p32/pc-a-signage
 ./signage.sh --check   # 依存・URL 疎通・設定の確認（GUI 不要）
 ./signage.sh           # 起動。Ctrl-C 一回で全ウィンドウごと終了
 ./signage.sh --stop    # 別ターミナルから止める場合
 ```
+
+`--check` は依存・X11 か Wayland か・URL に届くかまで見るので、**現地で最初に
+これを 1 回**。設定を埋める作業は無い（表示するページは `urls.conf`）。
 
 解像度は自動検出する。手元で現地を再現するときだけ `SIGNAGE_W=1920
 SIGNAGE_H=1080 ./signage.sh`。表示秒数（`DWELL`）・拡大率（`ZOOM`）・通知の

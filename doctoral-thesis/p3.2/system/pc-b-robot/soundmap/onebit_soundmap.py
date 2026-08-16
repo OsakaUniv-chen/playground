@@ -43,6 +43,16 @@ and since every sample-domain array here is now bit-packed 64/word
 per-sample one would. This is also how the hardware actually does it -- a
 small fixed bank of shift registers, reused across many steering directions.
 
+This PC-B copy is **generation only** -- the upstream generator's `visualize_sm`
+(and its `plot_size`) is deliberately dropped. PC-B is headless: it drives the
+robot's hardware and ships sensor signals out, and never draws anything. The
+one place the map becomes an image is `bridge/soundmap_bridge.py::_push_to_ome`,
+which applies the same exp(sm-sm.max()) transform at the native 64x64 (the
+operator's browser and PC-D scale it up). Keeping a second, unused colorizer
+here also meant importing cv2 for nothing -- and since the bridge treats an
+ImportError as "generator unavailable" and silently falls back to raw-audio
+recording only, a missing OpenCV would have taken the whole sound map down.
+
 See README.md in this folder for the precision-vs-speed discussion (how this
 compares to the frequency-domain FFT beamformer in ../video-generator/).
 """
@@ -50,7 +60,6 @@ from __future__ import annotations
 
 import warnings
 
-import cv2
 import numpy as np
 from scipy.signal import butter, sosfiltfilt
 from scipy.spatial import Delaunay
@@ -87,7 +96,6 @@ class OneBitSoundMapGenerator:
         fs=44100,
         channels=16,
         sm_size=64,
-        plot_size=1080,
         device="cpu",
         filter_order=4,
         min_samples=256,
@@ -102,7 +110,6 @@ class OneBitSoundMapGenerator:
         self.fs = fs
         self.channels = channels
         self.sm_size = sm_size
-        self.plot_size = plot_size
 
         self.band_low = 2000
         self.band_high = 8000
@@ -303,12 +310,13 @@ class OneBitSoundMapGenerator:
     # ~0.6-0.7, nowhere near the idealized 1.0 ceiling, so a naive "0.5->0,
     # 1.0->160" mapping wastes almost all its range on scores that never occur
     # and crushes the whole map to a near-invisible single pixel once the shared
-    # exp(sm-sm.max()) display/label transform (labeling.transform_sm) is
-    # applied. GAIN=50 was picked so this generator's fraction of "visible"
-    # (>0.05 after that transform) pixels lands in the same ballpark as the FFT
-    # beamformer's on real ticks (~0.03-0.04 both, re-checked after switching to
-    # all-pairs correlation, which changed the raw score distribution slightly
-    # from the 15-pair scheme's -- see compare_video.py / README.md).
+    # exp(sm-sm.max()) display/label transform (labeling.transform_sm, mirrored
+    # here by soundmap_bridge._push_to_ome) is applied. GAIN=50 was picked so
+    # this generator's fraction of "visible" (>0.05 after that transform) pixels
+    # lands in the same ballpark as the FFT beamformer's on real ticks
+    # (~0.03-0.04 both, re-checked after switching to all-pairs correlation,
+    # which changed the raw score distribution slightly from the 15-pair
+    # scheme's -- see compare_video.py / README.md).
     GAIN = 50.0
 
     def _score_to_db(self, score):
@@ -326,37 +334,17 @@ class OneBitSoundMapGenerator:
         db_like = self._score_to_db(score)
         return self._interpolate_to_soundmap(db_like)
 
-    def visualize_sm(self, final_Lm, method="B"):
-        plot_sm = cv2.resize(final_Lm, (self.plot_size, self.plot_size), interpolation=cv2.INTER_LINEAR)
-
-        x = plot_sm.astype(np.float64)
-        if method == "A":
-            filled_sm = x / 160
-        elif method == "B":
-            filled_sm = np.exp(x - x.max())
-        elif method == "C":
-            filled_sm = np.zeros_like(x) if x.max() == x.min() else np.exp((x - x.max()) / (x.max() - x.min()))
-        elif method == "D":
-            x = np.exp(x)
-            filled_sm = (x - x.min()) / (x.max() - x.min())
-        elif method == "E":
-            x = np.exp(x)
-            filled_sm = (x - 1) / (np.exp(160) - 1)
-        else:
-            raise ValueError(f"Unknown visualization method: {method}")
-
-        filled_sm = (filled_sm * 255).astype(np.uint8)
-        return np.stack([np.zeros_like(filled_sm), filled_sm, filled_sm], axis=-1)
-
 
 class OneBitSoundMapAPI:
     def __init__(self, fs: int = 44100, channels: int = 16,
-                 blocksize: int = 4096, sm_size: int = 64, plot_size: int = 1080,
+                 blocksize: int = 4096, sm_size: int = 64,
                  device: str = "cpu", precision: str = "float32"):
         # blocksize/precision accepted-but-unused: kept only so this class is a
         # drop-in for beamform_soundmap.SoundMapAPI's constructor signature.
+        # `plot_size` is deliberately NOT accepted -- see the module docstring's
+        # note on why the visualization path is gone from this copy.
         self._gen = OneBitSoundMapGenerator(
-            fs=fs, channels=channels, sm_size=sm_size, plot_size=plot_size, device=device,
+            fs=fs, channels=channels, sm_size=sm_size, device=device,
         )
         self.sm_size = sm_size
         self.channels = channels

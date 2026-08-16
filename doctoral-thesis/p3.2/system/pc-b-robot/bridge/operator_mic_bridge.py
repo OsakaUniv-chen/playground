@@ -34,8 +34,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 class OperatorMicBridge(GstBridgeNode):
     def __init__(self):
         self.ns = robot_ns()
-        self.channels = env_int("OPERATOR_MIC_CHANNELS", 1)
-        self.rate = env_int("OPERATOR_MIC_RATE", 16000)
+        self.channels = env_int("OPERATOR_MIC_CHANNELS")
+        self.rate = env_int("OPERATOR_MIC_RATE")
         self.caps = (f"audio/x-raw,format=S16LE,rate={self.rate},"
                      f"channels={self.channels}")
         self.spk = None
@@ -72,11 +72,11 @@ class OperatorMicBridge(GstBridgeNode):
             self.get_logger().info(text)
 
     def build_pipeline(self) -> str:
-        fake = env_bool("USE_FAKE_SOURCES", True)
+        fake = env_bool("USE_FAKE_SOURCES")
         sink = (
             "fakesink sync=false"
             if fake
-            else f"alsasink device={env('SPEAKER_DEVICE', 'default')} sync=false"
+            else f"alsasink device={env('SPEAKER_DEVICE')} sync=false"
         )
 
         # 音は OmeReceiver 側から appsrc に押し込む。ここはスピーカーへ
@@ -101,10 +101,11 @@ class OperatorMicBridge(GstBridgeNode):
         from ome_receiver import OmeReceiver
 
         self.spk = self.pipeline.get_by_name("spk")
-        host = env("PC_C_IP", "127.0.0.1")
+        # 受信側なので OME_HOST を見る（config.env で既定は PC_C_IP）。
+        host = env("OME_HOST")
         self.rx = OmeReceiver(
-            host, env_int("OME_WS_PORT", 3333), env("OME_APP", "app"),
-            env("STREAM_KEY_OPERATOR_MIC", "operatormic"),
+            host, env_int("OME_WS_PORT"), env("OME_APP"),
+            env("STREAM_KEY_OPERATOR_MIC"),
             on_audio=self._on_ome_audio,
             # 記録するレートに揃えてから受ける（OME から出るのは 48 kHz）
             audio_caps=self.caps,
@@ -113,8 +114,8 @@ class OperatorMicBridge(GstBridgeNode):
         self.rx.start()
         self.get_logger().info(
             f"操作者マイクを OME から受ける: "
-            f"ws://{host}:{env('OME_WS_PORT', '3333')}/"
-            f"{env('OME_APP', 'app')}/{env('STREAM_KEY_OPERATOR_MIC', 'operatormic')}"
+            f"ws://{host}:{env('OME_WS_PORT')}/"
+            f"{env('OME_APP')}/{env('STREAM_KEY_OPERATOR_MIC')}"
         )
 
     # ---- 受け取り ----

@@ -38,25 +38,43 @@ def clock_offset_ns() -> int:
     )
 
 
-def env(name: str, default: str = "") -> str:
+def env(name: str, default: str = None) -> str:
+    """環境変数を読む。**config.env が持つ項目には既定値を渡さない。**
+
+    既定値をここに書くと config.env と二重定義になり、片方だけ直したときに
+    黙って食い違う（実際 SOUNDMAP_BITRATE が 500 と 2000 で割れていた）。
+    設定の出所は config.env ひとつに絞り、未設定なら起動時に落とす。
+    既定値を渡してよいのは config.env に無い項目だけ。
+    """
+    if default is None:
+        try:
+            return os.environ[name]
+        except KeyError:
+            raise RuntimeError(
+                f"{name} が未設定。env.sh を読まずに起動している"
+                f"（common/config.env か各 PC の config.env が設定する）"
+            ) from None
     return os.environ.get(name, default)
 
 
-def env_int(name: str, default: int) -> int:
+def env_int(name: str, default: int = None) -> int:
     try:
-        return int(os.environ.get(name, default))
-    except (TypeError, ValueError):
+        return int(env(name, None if default is None else str(default)))
+    except ValueError:
+        if default is None:
+            raise
         return default
 
 
-def env_bool(name: str, default: bool = False) -> bool:
-    return env(name, "1" if default else "0").strip() in ("1", "true", "True", "yes")
+def env_bool(name: str, default: bool = None) -> bool:
+    v = env(name, None if default is None else ("1" if default else "0"))
+    return v.strip() in ("1", "true", "True", "yes")
 
 
 def robot_ns() -> str:
     # 既定値は置かない。未設定のまま起動すると別の接頭辞で publish してしまい、
     # 収録側と噛み合わずに「エラー無しで何も録れていない」状態になる。
-    return "/" + os.environ["ROBOT_NAME"]
+    return "/" + env("ROBOT_NAME")
 
 
 # AudioDataStamped には 2 系統ある。

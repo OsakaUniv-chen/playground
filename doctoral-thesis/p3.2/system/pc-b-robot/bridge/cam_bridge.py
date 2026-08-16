@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Xacti カメラ + 機体マイク -> OME(RTMP) と ROS 記録。
+"""Xacti カメラ -> OME(RTMP) と ROS 記録。
 
     v4l2src ─ h264parse ─ tee ─ queue(leaky) ─ flvmux ─ rtmpsink  (OME: <robot>stream)
-                               └ queue ────── appsink rec_video  (記録)
-    alsasrc ───────────────── tee ─ queue(leaky) ─ aac ─ rtmpsink (OME: <robot>mic)
-                               └ queue ────── appsink rec_audio  (記録)
+                               └ queue ────────────── appsink rec (記録)
 
-映像と機体マイクは別ストリームにしてある。PC-D が音声だけを取り出せる
-ようにするため。同一ストリームなら PeerConnection 内で自動的に唇同期が
-掛かるが、それを捨てる代わりに経路の独立を取っている（記録側は PC-B の
-bag で時刻が揃うので、精密な対応付けはそちらで行う）。
+機体マイクは別ストリーム（`<robot>mic`）で、**別プロセス**の
+onboard_mic_bridge.py が持つ。PC-D が音声だけを取り出せるようにするためで、
+プロセスを分けてあるのは ALSA デバイスが開けなくてもカメラを巻き込まない
+ようにするため（詳しくは onboard_mic_bridge.py の冒頭）。
 
 カメラは MJPG で取り、有効範囲（中央 1080×1080）を切り出してから H.264 に
 符号化する。映像は符号化したまま ROS に載せる（sensor_msgs/Image に展開すると
@@ -19,15 +17,13 @@ bag で時刻が揃うので、精密な対応付けはそちらで行う）。
 
 import array
 
-from audio_common_msgs.msg import AudioDataStamped
-
 import gi
 
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 
 from gst_ros_common import (GstBridgeNode, env, env_bool, env_int, robot_ns,  # noqa: E402
-                            run, set_audio_data)
+                            run)
 
 try:
     from foxglove_msgs.msg import CompressedVideo
@@ -57,18 +53,10 @@ class CamBridge(GstBridgeNode):
                 CompressedImage, f"{self.ns}/camera/video", 10
             )
 
-        self.pub_audio = self.create_publisher(
-            AudioDataStamped, f"{self.ns}/onboard_mic/audio", 50
-        )
-
         self.n_video = 0
-        self.n_audio = 0
         self.create_timer(10.0, self._report)
 
     # ---- パイプライン ----
-
-    def appsink_names(self):
-        return ["rec_video", "rec_audio"]
 
     @staticmethod
     def _sw_crop(sw, sh, w, h) -> str:
@@ -99,9 +87,9 @@ class CamBridge(GstBridgeNode):
         エレメントが無ければ黙ってソフトウェアに戻る。**現地で GPU が
         使えなくても起動はする。**
         """
-        rot = env_bool("CAM_ROTATE_180", True)
+        rot = env_bool("CAM_ROTATE_180")
         need = ("vaapijpegdec", "vaapipostproc", "vaapih264enc")
-        if env_bool("USE_HW_CODEC", True) and all(
+        if env_bool("USE_HW_CODEC") and all(
             Gst.ElementFactory.find(e) for e in need
         ):
             lr = max(0, (sw - w) // 2)
@@ -140,13 +128,13 @@ class CamBridge(GstBridgeNode):
         )
 
     def build_pipeline(self) -> str:
-        fake = env_bool("USE_FAKE_SOURCES", True)
-        sw = env_int("CAM_SRC_WIDTH", 1920)
-        sh = env_int("CAM_SRC_HEIGHT", 1080)
-        w = env_int("CAM_WIDTH", 1080)
-        h = env_int("CAM_HEIGHT", 1080)
-        fps = env_int("CAM_FPS", 30)
-        kbps = env_int("CAM_BITRATE", 8000)
+        fake = env_bool("USE_FAKE_SOURCES")
+        sw = env_int("CAM_SRC_WIDTH")
+        sh = env_int("CAM_SRC_HEIGHT")
+        w = env_int("CAM_WIDTH")
+        h = env_int("CAM_HEIGHT")
+        fps = env_int("CAM_FPS")
+        kbps = env_int("CAM_BITRATE")
 
         sw_enc = (
             f"x264enc tune=zerolatency speed-preset=ultrafast "
@@ -154,18 +142,13 @@ class CamBridge(GstBridgeNode):
         )
         # OME は PC-C に systemd で常駐しているので、必ず先に立っている前提。
         rtmp = (
-            f"rtmp://{env('PC_C_IP', '127.0.0.1')}:{env('OME_RTMP_PORT', '1935')}"
-            f"/{env('OME_APP', 'app')}/{env('STREAM_KEY_MAIN', 'stream')} live=true"
+            f"rtmp://{env('PC_C_IP')}:{env('OME_RTMP_PORT')}"
+            f"/{env('OME_APP')}/{env('STREAM_KEY_MAIN')} live=true"
         )
-        send_sink = f"flvmux streamable=true ! rtmpsink location=\"{rtmp}\""
-        mic_rtmp = (
-            f"rtmp://{env('PC_C_IP', '127.0.0.1')}:{env('OME_RTMP_PORT', '1935')}"
-            f"/{env('OME_APP', 'app')}/{env('STREAM_KEY_MIC', 'mic')} live=true"
-        )
-        mic_sink = (
-            f"voaacenc bitrate=64000 ! aacparse "
-            f"! flvmux streamable=true ! rtmpsink location=\"{mic_rtmp}\""
-        )
+        # sync=false。live 送出なのでフレームは実時間で届く。既定の sync=true
+        # だと rtmpsink がパイプライン latency ぶん抱え込んでから出すので、
+        # 往復 75 ms に効いてくるだけで得が無い。
+        send_sink = f"flvmux streamable=true ! rtmpsink sync=false location=\"{rtmp}\""
 
         # --- 映像ソース ---
         if fake:
@@ -182,65 +165,40 @@ class CamBridge(GstBridgeNode):
             # なるが、画素数が 44% 減るぶん符号化はむしろ軽くなる。
             dec, crop, enc, profile = self._transcode(sw, sh, w, h, fps, kbps, sw_enc)
             vsrc = (
-                f"v4l2src device={env('CAM_DEVICE', '/dev/video0')} "
+                f"v4l2src device={env('CAM_DEVICE')} "
                 f"do-timestamp=true io-mode=2 "
                 f"! image/jpeg,width={sw},height={sh},framerate={fps}/1 "
                 f"! {dec} ! {crop}{enc} ! video/x-h264,profile={profile}"
             )
 
-        # --- 音声ソース（機体マイク） ---
-        arate = env_int("ONBOARD_MIC_RATE", 48000)
-        ach = env_int("ONBOARD_MIC_CHANNELS", 2)
-        if fake:
-            asrc = "audiotestsrc is-live=true wave=pink-noise"
-        else:
-            asrc = f"alsasrc device={env('ONBOARD_MIC_DEVICE', 'default')} buffer-time=200000"
-        asrc += f" ! audio/x-raw,format=S16LE,rate={arate},channels={ach}"
-
         return (
             f"{vsrc} ! h264parse config-interval=-1 ! tee name=vt "
             f"vt. ! queue max-size-buffers=100 leaky=downstream "
             f"! {send_sink} "
-            f"vt. ! queue max-size-time=2000000000 ! appsink name=rec_video "
-            f"{asrc} ! tee name=at "
-            f"at. ! queue max-size-time=500000000 leaky=downstream "
-            f"! audioconvert ! audioresample ! {mic_sink} "
-            f"at. ! queue max-size-time=2000000000 "
-            f"! appsink name=rec_audio"
+            f"vt. ! queue max-size-time=2000000000 ! appsink name=rec"
         )
 
     # ---- 記録 ----
 
     def on_sample(self, name, data, unix_ns, sample):
         stamp = self.to_ros_time(unix_ns)
-        if name == "rec_video":
-            if HAVE_FOXGLOVE:
-                msg = CompressedVideo()
-                msg.timestamp = stamp
-                msg.frame_id = "camera"
-                msg.format = "h264"
-            else:
-                msg = CompressedImage()
-                msg.header.stamp = stamp
-                msg.header.frame_id = "camera"
-                msg.format = "h264"
-            msg.data = array.array("B", data)
-            self.pub_video.publish(msg)
-            self.n_video += 1
-        elif name == "rec_audio":
-            msg = AudioDataStamped()
+        if HAVE_FOXGLOVE:
+            msg = CompressedVideo()
+            msg.timestamp = stamp
+            msg.frame_id = "camera"
+            msg.format = "h264"
+        else:
+            msg = CompressedImage()
             msg.header.stamp = stamp
-            msg.header.frame_id = "onboard_mic"
-            set_audio_data(msg, data)
-            self.pub_audio.publish(msg)
-            self.n_audio += 1
+            msg.header.frame_id = "camera"
+            msg.format = "h264"
+        msg.data = array.array("B", data)
+        self.pub_video.publish(msg)
+        self.n_video += 1
 
     def _report(self):
-        self.get_logger().info(
-            f"video {self.n_video} msg / audio {self.n_audio} msg (10s)"
-        )
+        self.get_logger().info(f"video {self.n_video} msg (10s)")
         self.n_video = 0
-        self.n_audio = 0
 
 
 if __name__ == "__main__":

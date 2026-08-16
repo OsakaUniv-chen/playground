@@ -1,13 +1,20 @@
 # 1-bit 音響マップ生成器
 
 `bridge/soundmap_bridge.py` がここから `OneBitSoundMapAPI` を読む。
-依存は numpy / scipy / cv2 だけ。CPU のみで動き、N100 の実測で
+依存は numpy / scipy だけ。CPU のみで動き、N100 の実測で
 25.5 ms/map・1 コア・最大 27 Hz。
 
 **意図的な複製。** 元は `soundmap-generator/generator-1bit/`（研究用の別ディレクトリ）
 にある。この系は現地で PC-B に配って動かすので、手元の作業ディレクトリの構成に
 依存していると配った先で動かない。PC-B のフォルダだけ持って行けばそのまま動く
 ように取り込んである（2026-07-17 時点の版）。
+
+**元版との差は「生成だけ」にしたこと。** PC-B は画面を持たない —— ロボットの
+各ハードウェアを繋いでセンサ信号を外へ出す係で、ここで絵を描くことはない。
+なので元版の `visualize_sm`（と `plot_size`）は落としてある。cv2 依存も
+それと一緒に消えた。マップが画になるのは
+`bridge/soundmap_bridge.py` の `_push_to_ome` の一箇所だけで、着色の式は
+元版と同じ（下の「表示」を参照）。
 
 既定の `fs=44100` / `channels=16` は UMA16v2 と一致する。生成周期と積分窓は
 `common/config.env` の `SOUNDMAP_HZ` / `SOUNDMAP_WINDOW_MS`（窓は周期より
