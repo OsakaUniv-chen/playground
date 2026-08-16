@@ -7,18 +7,33 @@ OME へは FLV に載る AAC で入れ、OME が WebRTC 用に Opus へ変換し
 
 **マイクは常時オン。** 送話の切り替え（PTT）は持たないので、操作者側の
 物音や独り言もそのまま機体のスピーカーから出る。
+
+**このプロセスは ROS を使わない。GStreamer だけ。rclpy を戻さないこと。**
+
+以前は rclpy.spin() を待ちループ代わりに、ROS logger を出力先に使って
+いたが、topic は 1 本も出し入れしていないので ROS 側の実体は無かった。
+その版は PC-C で**何も出力しないまま SIGSEGV / SIGABRT で落ちる**ことが
+あった（run.sh 経由だと mic だけが「死んでいる」になり、ログは 0 バイト。
+他の ROS ノードが居るときに落ちやすいが、単独でも落ちた回があり、
+再現は不安定）。rclpy を外した版は同じ 4 条件で 4/4 生存。
+
+**原因は特定できていない。** gi と rclpy の同居そのものではない ──
+PC-B のブリッジ（bridge/gst_ros_common.py）は同じ組み合わせ・同じ初期化
+順序で、この機械で 9/9 落ちなかった。分かっているのは「使っていない
+rclpy を外したら直った」ところまで。系統としては README.md §3 の
+libunwind の件に近いが、そう言い切れる証拠は取れていない。
+
+待ちループは GLib.MainLoop（GStreamer 本来のやり方）、出力は print。
 """
 
 import os
+import signal
+import sys
 
 import gi
 
 gi.require_version("Gst", "1.0")
-from gi.repository import Gst  # noqa: E402
-
-import rclpy  # noqa: E402
-from rclpy.executors import ExternalShutdownException  # noqa: E402
-from rclpy.node import Node  # noqa: E402
+from gi.repository import GLib, Gst  # noqa: E402
 
 
 def env(k, d=None):
@@ -34,11 +49,17 @@ def env(k, d=None):
     return os.environ.get(k, d)
 
 
-class OperatorMicSender(Node):
+def log(level, text):
+    """ROS logger と同じ見た目にしておく（log/mic.log を並べて読むため）。"""
+    print(f"[{level}] [operator_mic_send]: {text}", flush=True)
+
+
+class OperatorMicSender:
+    _BUS_FILTER = (Gst.MessageType.ERROR | Gst.MessageType.EOS
+                   | Gst.MessageType.WARNING)
+
     def __init__(self):
-        super().__init__("operator_mic_sender")
         Gst.init(None)
-        ns = "/" + env("ROBOT_NAME")           # 既定値は置かない（env.sh 必須）
         fake = env("USE_FAKE_SOURCES") == "1"
 
         src = (
@@ -67,52 +88,57 @@ class OperatorMicSender(Node):
             f"! flvmux streamable=true ! rtmpsink sync=false location=\"{rtmp}\""
         )
 
-        self.get_logger().info(f"pipeline: {desc}")
+        log("INFO", f"pipeline: {desc}")
         self.pipeline = Gst.parse_launch(desc)
         self.pipeline.set_state(Gst.State.PLAYING)
-        self.get_logger().info(f"操作者マイク -> {rtmp.split(' ')[0]}")
+        log("INFO", f"操作者マイク -> {rtmp.split(' ')[0]}"
+                    f"{'（フェイク音源）' if fake else ''}")
 
         # **bus を見ないと失敗が黙る。** set_state(PLAYING) はパイプラインが
         # 実際に流れる前に返るので、OME がまだ立っていない・stream key が
         # 違う・マイクが開けない、はすべて後から bus のエラーとして来る。
         # 拾わないと「操作者が喋っているのに機体から声が出ないが、ログは
-        # 正常」という一番手間のかかる形になる。PC-B 側は
-        # bridge/gst_ros_common.py の GstBridgeNode が同じことをしている
-        # （こちらはその基底を使っていないので個別に持つ）。
+        # 正常」という一番手間のかかる形になる（PC-B 側は
+        # bridge/gst_ros_common.py の GstBridgeNode が同じことをしている）。
         self.bus = self.pipeline.get_bus()
-        self.create_timer(0.5, self._poll_bus)
-
-    _BUS_FILTER = (Gst.MessageType.ERROR | Gst.MessageType.EOS
-                   | Gst.MessageType.WARNING)
+        GLib.timeout_add(500, self._poll_bus)
 
     def _poll_bus(self):
         msg = self.bus.timed_pop_filtered(0, self._BUS_FILTER)
         while msg is not None:
             if msg.type == Gst.MessageType.ERROR:
                 err, dbg = msg.parse_error()
-                self.get_logger().error(f"gst error: {err} | {dbg}")
+                log("ERROR", f"gst error: {err} | {dbg}")
             elif msg.type == Gst.MessageType.WARNING:
                 err, dbg = msg.parse_warning()
-                self.get_logger().warn(f"gst warning: {err} | {dbg}")
+                log("WARN", f"gst warning: {err} | {dbg}")
             elif msg.type == Gst.MessageType.EOS:
-                self.get_logger().error("gst EOS: マイクの経路が終了した")
+                log("ERROR", "gst EOS: マイクの経路が終了した")
             msg = self.bus.timed_pop_filtered(0, self._BUS_FILTER)
+        return True                      # False を返すとタイマが外れる
 
-    def destroy_node(self):
+    def close(self):
         self.pipeline.set_state(Gst.State.NULL)
-        super().destroy_node()
 
 
 def main():
-    rclpy.init()
-    node = OperatorMicSender()
+    sender = OperatorMicSender()
+    loop = GLib.MainLoop()
+
+    # run.sh stop は SIGTERM を送る。捕まえないと MainLoop が回り続ける。
+    def _bye(signum, _frame):
+        log("INFO", f"signal {signum} を受けた。終了する")
+        sender.close()
+        loop.quit()
+
+    signal.signal(signal.SIGTERM, _bye)
+    signal.signal(signal.SIGINT, _bye)
+
     try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
+        loop.run()
     finally:
-        node.destroy_node()
-        rclpy.try_shutdown()
+        sender.close()
+        sys.stdout.flush()
 
 
 if __name__ == "__main__":

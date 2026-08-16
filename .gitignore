@@ -40,3 +40,7 @@ p6/try-VLM-server/**/*.jpeg
 # audio_common_msgs・soundmap 生成器・teleop_interface の構成）。
 # 手元には残すが版管理はしない。
 reference code/
+
+# PC-C の run.sh が出す実行時ログ（log/ui.log などと pids）。
+# 実行のたびに書き換わるもので、成果物ではない。
+doctoral-thesis/p3.2/system/pc-c-operator/log/

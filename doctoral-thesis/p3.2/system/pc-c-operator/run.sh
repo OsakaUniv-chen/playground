@@ -13,10 +13,22 @@ PIDFILE="$LOG/pids"
 mkdir -p "$LOG"
 
 stop_all() {
+    # **死んだことを確かめてから「停止」と言う。** SIGTERM を送っただけで
+    # 報告すると、落ちきらずにポートを握ったままの抜け殻が残ったときに
+    # 嘘になる。その状態で起動し直すと新しい方が Address already in use で
+    # 死に、抜け殻のほうが画面を返し続ける（指令だけが通らない）。
     [ -f "$PIDFILE" ] || { echo "起動していない"; return 0; }
     while read -r name pid; do
+        kill -0 "$pid" 2>/dev/null || continue
+        kill "$pid" 2>/dev/null || true
+        for _ in $(seq 20); do                  # 最大 5 秒待つ
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.25
+        done
         if kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
+            kill -9 "$pid" 2>/dev/null || true
+            echo "  停止 $name (pid=$pid) ── SIGTERM に応じないので SIGKILL"
+        else
             echo "  停止 $name (pid=$pid)"
         fi
     done < "$PIDFILE"
@@ -50,9 +62,13 @@ start() {  # start <name> <command...>
     echo "  $name  pid=$!  -> $LOG/$name.log"
 }
 
-start ui    python3 "$HERE/app.py"
-start mic   python3 "$HERE/operator_mic_send.py"
-start relay python3 "$HERE/head_relay.py"      # PC-D からの頭部指令 -> ROS
+# **`-u` を外さない。** 出力先がファイルなので、付けないと Python が
+# stdout をブロックバッファリングし、**異常終了したプロセスのログが
+# まるごと 0 バイトで残る**（何が起きたのか事後に一切分からなくなる）。
+# PC-B の pcb.launch.py も同じ理由で python3 -u で起動している。
+start ui    python3 -u "$HERE/app.py"
+start mic   python3 -u "$HERE/operator_mic_send.py"
+start relay python3 -u "$HERE/head_relay.py"   # PC-D からの頭部指令 -> ROS
 
 echo
 echo "ブラウザで http://localhost:${UI_PORT}/ を開く"

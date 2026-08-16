@@ -14,6 +14,8 @@
 """
 
 import os
+import signal
+import sys
 import threading
 
 import rclpy
@@ -123,6 +125,30 @@ def main():
     executor.add_node(ros_node)
     threading.Thread(target=executor.spin, daemon=True).start()
 
+    # **シグナルを自分で捕まえてプロセスごと終わらせる。外さないこと。**
+    # 素のままだと `run.sh stop`（SIGTERM）で止まらない:
+    #   - rcl が C レベルで SIGTERM を掴んでいて、**context だけ落として
+    #     プロセスは終わらせない**（Python の signal.getsignal には見えない）
+    #   - socketio.run は accept ループに居るので抜けない
+    #   - Werkzeug の serving スレッドは非デーモン
+    # 結果、**「画面は 200 を返すのに、指令だけが publisher's context is
+    # invalid で全部失敗する抜け殻」**が居座る。7779 も握ったままなので
+    # 起動し直すと新しい方が Address already in use で死に、抜け殻のほうが
+    # 生き残る ── 画面が普通に見えるだけに現地で気付けない。
+    # rclpy.init() の**後**に入れること（先に入れると rcl に上書きされる）。
+    def _bye(signum, _frame):
+        print(f"signal {signum} を受けた。終了する", flush=True)
+        try:
+            ros_node.destroy_node()
+        except Exception:
+            pass
+        rclpy.try_shutdown()
+        sys.stdout.flush()
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, _bye)
+    signal.signal(signal.SIGINT, _bye)
+
     # TLS 無し。ブラウザは同一機から http://localhost:PORT/ で開くこと。
     # 別機から開くと secure context を失い Gamepad API が動かない。
     #
@@ -134,9 +160,6 @@ def main():
     # そもそも操作は同一機からと決まっているので、閉じても何も失わない。
     print(f"UI: http://localhost:{PORT}/   (robot={ROBOT_NAME})")
     socketio.run(app, host="127.0.0.1", port=PORT, allow_unsafe_werkzeug=True)
-
-    ros_node.destroy_node()
-    rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
