@@ -17,12 +17,26 @@ OME に集まり、PC-D は Tailscale 越しにここだけを見る。
 ./run.sh status       # 生きているか      ./run.sh stop で停止
 ```
 
-`run.sh` が中で `env.sh` を読むので `source` は要らない。OME は systemd で
-常駐しているので `run.sh` は触らない（`systemctl status ovenmediaengine`）。
+`run.sh` が中で `env.sh` を読むので `source` は要らない。**PC-B より先に
+立てる**（設計 §0.2）。
 
-**PC-B より先に立てる**（設計 §0.2）。
+**OME を起動する操作は要らない。** この機械で systemd 常駐かつ `enabled`
+なので、電源を入れた時点で上がっている。`run.sh` も触らない。見るだけ:
 
-起動したら **本機のブラウザで `http://localhost:7779/`** を開く。
+```bash
+systemctl is-active ovenmediaengine
+```
+
+`./run.sh` の後に、**本機のブラウザで `http://localhost:7779/`** を開き、
+**ゲームパッドのボタンを 1 回押す。**
+
+押すまで認識されないのはブラウザの仕様。指紋採取を防ぐため、Gamepad API は
+ページに焦点がある状態で操作されるまでパッドを見せず、`gamepadconnected` も
+飛ばない。**挿すだけでは駄目**（挿す順は前後どちらでもよい）。認識できたら
+console に `Gamepad connected: <型番>` が出る。
+
+つまり現地でやることは **`./run.sh` → ブラウザを開く → パッドを 1 回押す**
+の 3 つで、その後に PC-B を起動する。
 
 ログは `log/<名前>.log`（`ui` / `mic` / `relay`）。`./run.sh status` が
 「死んでいる」と言ったらそこを見る。1 本だけ直しながら動かすなら
