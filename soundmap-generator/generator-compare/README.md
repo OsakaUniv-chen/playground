@@ -8,6 +8,7 @@ gets its own subfolder; the code they share lives in `utils.py`.
 | [`utils.py`](utils.py) | shared comparison helpers — ROS2 bag reader + CDR decoders (`import utils as B`), the 4-label pipeline (`label_current_sm`, `transform_sm`, `extract_target7`, …), and MediaPipe head-box re-detection (`HeadBoxAPI`, imported lazily). Consolidates the former `bag_io.py` + `labeling.py` + `head_box.py`. |
 | [`acoular-vs-pytorch/`](acoular-vs-pytorch/) | OLD **acoular** `BeamformerBase.synthetic` vs NEW **pytorch** FFT-power sum, over all 65 bags (is swapping OLD→NEW harmless to the 4-label decision?) |
 | [`1bit-vs-pytorch/`](1bit-vs-pytorch/) | FFT/**pytorch** beamformer vs the **1-bit** XOR generator (real-bag video + synthetic precision sweeps) |
+| [`acoular-vs-1bit/`](acoular-vs-1bit/) | the live **acoular** generator vs the **1-bit** XOR generator, both benchmarked on an **emulated Intel N100** — can the field box hold the 4 Hz tick, and do the two agree on the label? |
 
 The generators themselves are **not** here — each comparison imports them from
 the sibling generator folders under `soundmap-generator/` (and, for
