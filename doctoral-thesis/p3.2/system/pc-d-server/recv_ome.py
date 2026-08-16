@@ -118,21 +118,44 @@ class OmeInputs:
         "operator": ("STREAM_KEY_OPERATOR_MIC", "audio"),
     }
 
-    def __init__(self, host=None, port=None, app=None, only=None, logger=None):
+    def __init__(self, host=None, port=None, app=None, only=None, logger=None,
+                 audio_caps=None):
+        """audio_caps:
+        音声を appsink の直前で揃えたいときに
+        `"audio/x-raw,format=S16LE,rate=16000,channels=1"` のように渡す。
+        文字起こし（asr.py）はこの形しか受け付けないので、**変換は
+        ここで gst にやらせる**（Python 側で resample すると音声 2 本ぶんの
+        CPU がまるごと無駄になる）。None なら OME から来たまま。
+        """
         # PC-C の tailscale アドレス（pc-d-server/config.env の OME_HOST）
         self.host = host or env("OME_HOST")
         self.port = int(port or env("OME_WS_PORT"))
         self.app = app or env("OME_APP")
         self.log = logger or (lambda lv, m: print(f"[{lv}] {m}", flush=True))
+        self.audio_caps = audio_caps
 
         self._lock = threading.Lock()
         self._latest = {}
+        self._audio_sinks = []
         self.rx = {}
 
         for key, (var, kind) in self.STREAMS.items():
             if only and key not in only:
                 continue
             self.rx[key] = self._make(key, env(var), kind)
+
+    def add_audio_sink(self, fn):
+        """届いた音声バッファを**すべて** `fn(key, Audio)` に渡す。
+
+        `latest_audio()` は「いま最新の 1 個」しか持たない ── 推論は
+        間に合わなければ捨ててよい、という前提の作りで、映像はそれで正しい。
+        **文字起こしはそれでは成り立たない**（落ちたぶんの発話が丸ごと
+        消える）ので、連続で要る側はこちらで受ける。
+
+        fn は受信スレッドから呼ばれる。重い処理をここでやると受信が詰まるので、
+        溜めるだけにして別スレッドで処理すること（asr.py はそうしている）。
+        """
+        self._audio_sinks.append(fn)
 
     def _make(self, key, stream, kind):
         def on_video(data, sample, _k=key):
@@ -144,8 +167,14 @@ class OmeInputs:
 
         def on_audio(data, sample, _k=key):
             s = sample.get_caps().get_structure(0)
-            self._put(_k, Audio(data, s.get_value("rate"), s.get_value("channels"),
-                                self._stamp(sample), self._count(_k)))
+            item = Audio(data, s.get_value("rate"), s.get_value("channels"),
+                         self._stamp(sample), self._count(_k))
+            self._put(_k, item)
+            for fn in self._audio_sinks:
+                try:
+                    fn(_k, item)
+                except Exception as e:      # 1 個が転んでも受信は続ける
+                    self.log("warn", f"audio sink 例外: {e}")
 
         is_video = kind == "video"
         return OmeReceiver(
@@ -155,6 +184,7 @@ class OmeInputs:
             logger=lambda lv, m, _s=stream: self.log(lv, f"[{_s}] {m}"),
             # 推論に食わせるので RGB で受ける
             video_format="RGB" if is_video else None,
+            audio_caps=None if is_video else self.audio_caps,
         )
 
     @staticmethod

@@ -79,7 +79,7 @@ PC-C は ROS を使うが `p3_msgs` は要らない。
 |---|---|---|
 | PC-C | `./run.sh` | **最初に立てる。** 背後に回るので `./run.sh status` / `stop` |
 | PC-B | `./run.sh` | **収録込み**。前面で動くので Ctrl-C で止める |
-| PC-D | `source env.sh && python3 recv_ome.py` | 順序は不問 |
+| PC-D | `./run.sh` | 文字起こしが動く。順序は不問 |
 | PC-A | `./signage.sh` | 他と繋がらないのでいつでも |
 
 **OME が立ってから PC-B を起動する**（設計 §0.2）。つまり PC-C → PC-B。
