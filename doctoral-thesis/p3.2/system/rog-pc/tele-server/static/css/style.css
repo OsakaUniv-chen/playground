@@ -27,8 +27,7 @@ body {
   position: relative;
 }
 
-#player-cam,
-#player-soundmap {
+#player-view {
   position: absolute;
   top: 0;
   left: 0;
@@ -36,35 +35,11 @@ body {
   height: 100%;
 }
 
-#player-soundmap video,
-#player-soundmap canvas {
+#player-view video,
+#player-view canvas {
   width: 100%;
   height: 100%;
   object-fit: fill;
-}
-
-/* 音響マップは黒地に黄色の斑点として届く（soundmap_bridge.py の _push_to_ome）。
-   screen 合成なので黒い所はカメラ映像がそのまま素通りし、黄色だけが乗る
-   ── QC 動画 bag2video.py の cv2.addWeighted と同じ見え方になる。
-   拡大は補間させる（あちらも INTER_LINEAR で 1080 に伸ばしている）。 */
-#player-soundmap {
-  pointer-events: none;          /* クリックは下のカメラに通す */
-  mix-blend-mode: screen;
-  opacity: 0.6;                  /* JS のスライダで上書きされる */
-}
-
-#overlay_soundmap_mix {
-  position: absolute;
-  right: 16px;
-  bottom: 16px;
-  color: #fff;
-  font-size: 13px;
-  z-index: 10;
-}
-
-#overlay_soundmap_mix input {
-  vertical-align: middle;
-  width: 120px;
 }
 
 /* ---- 状態表示 ---- */

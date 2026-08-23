@@ -155,12 +155,24 @@ class Cam:
                 src = "audiotestsrc is-live=true wave=silence"
             else:
                 src = f"alsasrc device={self.mic}"
+            # 增益加在 tee 之前 —— 推流和记录拿到同一份，事后重做算法时不用
+            # 再猜当时是多少。`hw:CARD=` 绕过 PulseAudio，pactl 的音量设置对
+            # 这条链路无效，增益只能加在管线里。
             audio = (f"{src} ! audioconvert ! audioresample "
+                     f"! volume volume={env('ONBOARD_MIC_GAIN')} "
                      f"! audio/x-raw,format=S16LE,rate={rate},channels={ch} "
                      f"! tee name=at "
                      f"at. ! queue max-size-buffers=10 leaky=downstream "
                      f"! voaacenc bitrate={env('ONBOARD_MIC_BITRATE')} ! aacparse "
-                     f"! queue max-size-buffers=3 leaky=downstream ! mux. ")
+                     f"! tee name=aact "
+                     f"aact. ! queue max-size-buffers=3 leaky=downstream ! mux. "
+                     # 同一份 AAC 再单独走一条 SRT：操作页面的画面是 rgb_sm，
+                     # 那条要多走一圈叠加和重编码，声音跟着它走就白白慢几百
+                     # 毫秒。**只编一次**，这里分叉的是编好的 AAC。
+                     f"aact. ! queue max-size-buffers=3 leaky=downstream "
+                     f"! mpegtsmux name=amux alignment=7 "
+                     f"! srtsink name=asink_srt "
+                     f"uri=\"{srt_uri(env('KEY_ONBOARDMIC'))}\" sync=false ")
             if self.publish:
                 # **记录的是 AAC 之前的原始 S16LE**：0.77 Mbps，无损，
                 # 事后重做算法用得上；AAC 那份只是给操作者听的。

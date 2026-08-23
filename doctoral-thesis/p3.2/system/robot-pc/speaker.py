@@ -105,7 +105,8 @@ class Speaker:
             "block=false max-bytes=2000000 "
             "! queue max-size-time=200000000 max-size-buffers=0 max-size-bytes=0 "
             "leaky=downstream "
-            f"! audioconvert ! audioresample ! {sink}"
+            f"! audioconvert ! audioresample "
+            f"! volume volume={env('SPEAKER_GAIN')} ! {sink}"
         )
 
     def _on_bus(self, _bus, msg):

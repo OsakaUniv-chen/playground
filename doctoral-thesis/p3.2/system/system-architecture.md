@@ -5,10 +5,10 @@
 | 角色 | 文件夹 | 机器（hostname） | 地址 |
 |---|---|---|---|
 | **robot-pc** | `robot-pc/` | `boxie`，机体 miniPC | `boxie.local` |
-| **stream-server** | `rog-pc/stream-server/` | `rog-server` | `rog-server.local`（`192.168.1.10`） |
-| **tele-server** | `rog-pc/tele-server/` | `rog-server`，**和 stream-server 同一台** | 同上 `:<UI_PORT>` |
+| **stream-server** | `rog-pc/stream-server/` | `rog-server` | `rog-server.local` |
+| **tele-server** | `rog-pc/tele-server/` | `rog-server`，**和 stream-server 同一台** | 同上 `:7779` |
 | **tele-pc** | （无固定文件夹） | 局域网内任意一台，可换人换机器 | 不固定 |
-| **vlm-server** | `vlm-server/` | `vlm-server` | 异地，走 tailnet（§0.1） |
+| **vlm-server** | `vlm-server/` | `vlm-server` | 异地，走 tailnet |
 | （开发机） | —— | `chen-pc`，**实验中不参与** | —— |
 
 **stream-server 是枢纽。** 所有视频、音频汇聚到它上面的 OvenMediaEngine 再分发。**robot-pc ↔ vlm-server 之间没有直连**，vlm-server 只和 stream-server 通信。
@@ -32,15 +32,13 @@ tele-pc 是操作者当天用的机器，自己直接和 OME 打交道（浏览�
 |---|---|---|
 | robot-pc → stream-server | `rog-server.local` | `robot-pc/config.env` 的 `OME_HOST` |
 | tele-pc → stream-server | `rog-server.local` | 收流和推麦克风都指这里 |
-| tele-pc → tele-server | `rog-server.local:<UI_PORT>` | 打开网页 |
+| tele-pc → tele-server | `rog-server.local:7779` | 打开网页（`UI_PORT`） |
 | stream-server → 自己的 OME | `127.0.0.1` | 同机走 loopback |
 | vlm-server → stream-server | tailscale 地址（下表） | `.local` 和 `192.168.1.x` 在那边不通 |
-| stream-server → robot-pc（ROS 触发） | DDS discovery | §7 |
+| stream-server → robot-pc（ROS 触发） | DDS discovery | Humble ↔ Jazzy 实测能通，`ROS_DOMAIN_ID` 一致即可 |
 
-`.local` 靠组播 mDNS，客户端要装 `libnss-mdns`。解析不了的表现是 srtsink 一起来
-就报名字解析失败、被重连循环无限重试。此时把 `OME_HOST` 换成 `192.168.1.10`
-（rog-server 是 `nmcli` 静态地址），或在那台机器的 `/etc/hosts` 里写
-`192.168.1.10 rog-server.local`。
+`.local` 靠组播 mDNS，客户端要装 `libnss-mdns`。rog-server 的 IP 是 `nmcli`
+静态配置的 `192.168.1.10`，所以任何时候都可以把 `OME_HOST` 直接换成 IP。
 
 #### tailnet（vlm-server 走这条）
 
@@ -57,10 +55,9 @@ tailnet 是 **`taildf8663.ts.net`**，各机的 tailscale 名和 hostname 一致
 
 ## 1. 传输路径
 
-**进 OME 一律 SRT，出 OME 一律 WebRTC。** 没有例外 —— 浏览器不会说 SRT，
-所以操作者麦克风由 tele-pc 上一个独立的 gst 进程推（§4.2），不从页面推。
+**进 OME 一律 SRT，出 OME 一律 WebRTC。** 
 
-### 1.1 进 OME（ingest）
+### 1.1 进 OME
 
 | 来源 | stream key | 内容 | transport |
 |---|---|---|---|
@@ -68,26 +65,30 @@ tailnet 是 **`taildf8663.ts.net`**，各机的 tailscale 名和 hostname 一致
 | robot-pc | `soundmap` | H.264 64×64@15 | SRT |
 | robot-pc | `realsense` | H.264 848×480@30（仅 color） | SRT |
 | robot-pc | `navcam` | H.264 1280×720@30 | SRT |
+| robot-pc | `onboardmic` | AAC 48 kHz 1ch（AT-CSP1，和 `fisheye` 里那份同一次编码） | SRT（`mpegtsmux`） |
 | tele-pc | `operatormic` | AAC 48 kHz 1ch | SRT（`mpegtsmux`） |
 | **stream-server** | `rgb_sm` | H.264 1080×1080@15。鱼眼 ＋ 声音图叠加 | SRT（loopback） |
-| **stream-server** | `detect` | H.264 1080×1080@5。鱼眼 ＋ 检测框 ＋ 录制标志 | SRT（loopback） |
+| **stream-server** | `human_detect` | H.264 1080×1080@5。鱼眼 ＋ 检测框 ＋ 录制标志 | SRT（loopback） |
 
-- `rgb_sm` 和 `detect` 是 stream-server 生成再推回 OME 的**监视流**（§3），
+- `rgb_sm` 和 `human_detect` 是 stream-server 生成再推回 OME 的**监视流**（§3），
   **不进 bag、不参与任何判断**。播放地址见 `rog-pc/stream-server/README.md`。
 - SRT 用 `latency=20`。OME 的 SRT provider 按 `streamid=<vhost>/<app>/<key>`
   接收，写在 URI 的 query 里（OME 0.19.0）。
 - **音频一律 48 kHz**：OME 转 Opus 时时钟率固定 48000（RFC 7587）。
-- 机体麦克风复用进 `fisheye` 流。**麦克风打不开不连累视频** —— 设备不在就退回
-  静音的 `audiotestsrc`，推流照常。
+- 机体麦克风**同时走两条路**：复用进 `fisheye`（给 ASR、vlm-server、录制），
+  再单独推一条 `onboardmic`（给操作页面）。AAC 只编一次，`tee` 分叉。
+  操作页面的画面走 `rgb_sm`，那条要多绕一圈「解码→叠加→重编→回推」；
+  声音单独直达才不会跟着慢几百毫秒。**代价是口型对不上**，这是有意的取舍。
+- **麦克风打不开不连累视频** —— 设备不在就退回静音的 `audiotestsrc`，推流照常。
 
-### 1.2 出 OME（egress）
+### 1.2 出 OME
 
 | 接收方 | 取什么 |
 |---|---|
-| tele-pc（浏览器） | `fisheye` `soundmap` `realsense` `navcam`；监视流另加 `rgb_sm` `detect` |
+| tele-pc（浏览器） | **`rgb_sm`**（画面，已叠好）＋ **`onboardmic`**（声音）；`realsense`、`navcam`；要看检测再加 `human_detect` |
 | robot-pc（机体扬声器） | `operatormic` |
 | stream-server 自身（localhost） | `fisheye` → 人物检测；`fisheye` ＋ `soundmap` → `rgb_sm` 叠加；`fisheye` 音轨 ＋ `operatormic` → 语音转文字 |
-| vlm-server | `fisheye` `soundmap`，**只取视频 pad** |
+| vlm-server | `fisheye` `soundmap`，**只接视频轨** |
 
 - gst 侧的接收端统一用 `ome_receiver.py`（多路封装 `recv.py`），源头在
   `stream-server/`。**每台机器各带一份副本，运行时不跨目录引用**；改的时候改
@@ -104,7 +105,7 @@ tailnet 是 **`taildf8663.ts.net`**，各机的 tailscale 名和 hostname 一致
 | 鱼眼相机 | Xacti **CX-MT500** | MJPG 1920×1080@30 | 裁中央 1080×1080 后 H.264 | ○ |
 | 深度相机 | RealSense | color 848×480@30 | H.264 | ○ |
 | 导航相机 | nav camera | 1280×720@30 | H.264 | ○ |
-| 麦克风／扬声器 | **AT-CSP1** | ALSA `hw:CARD=` | AAC（复用进 `fisheye`） | ○ |
+| 麦克风／扬声器 | **AT-CSP1** | ALSA `hw:CARD=`，增益 4.0 / 2.0 | AAC（复用进 `fisheye`） | ○ |
 | 16ch 阵列 | miniDSP **UMA16v2** | S32LE 16ch 44.1 kHz interleaved | **不推** | ○（S16LE 原始） |
 
 - **RealSense 只开 color**，depth 流根本不打开。
@@ -114,6 +115,10 @@ tailnet 是 **`taildf8663.ts.net`**，各机的 tailscale 名和 hostname 一致
   相机查 `/sys/class/video4linux/*/name`，ALSA 用 `hw:CARD=<名字>,DEV=0`。
 - **★ Xacti / UMA16v2 / RealSense 要挂在不同的 USB 控制器上**（都是等时传输，
   同控制器会抢带宽掉帧）。用 `lsusb -t` 确认根路径不同。
+- **AT-CSP1 的增益加在 gst 管线里**（`volume` element，`ONBOARD_MIC_GAIN=4.0` /
+  `SPEAKER_GAIN=2.0`）。采集侧的增益在 `tee` 之前，所以推流和记录是同一份。
+  **`pactl` 那套音量设置对这条链路无效** —— 管线用 `hw:CARD=` 直接开 ALSA，
+  绕过了 PulseAudio。
 
 ### 2.2 推流管线
 
@@ -135,11 +140,14 @@ v4l2src(MJPG) → jpegdec → videocrop(左右各420px) → videoflip(180°)
 
 | 项 | 值 | 备注 |
 |---|---|---|
-| 周期 | **15 Hz** | 跟不上时表现为掉帧而非报错，要盯生成侧帧率；压不上去退回 10 Hz |
+| 周期 | **15 Hz** | 跟不上时表现为掉帧而非报错，`soundmap.py` 每 10 s 报一次超时帧数 |
 | 积分窗 | 464 ms | 滑窗，比周期长 |
 | 分辨率 | 64×64 | 原样推出去，放大交给接收端 |
 | 码率 | 500 kbps | |
-| 归一化 | `exp(值 − 最大值)` | **生成器的 GAIN 按此标定，不可改成 min-max** |
+| 生成器输出 | 原始一致率分数 `[0,1]` | 存进 bag 的就是这个值，不做面向显示的变换 |
+| 显示归一化 | `max(值 − p99, 0)` 再逐帧 min-max | 减 p99 是本底抑制；直接 min-max 的话安静场景会整片发亮 |
+| 频带 / 滤波器 | 2000–8000 Hz，4 阶 | |
+| 麦克风对 / 延迟 | 全部 120 对，整数精确延迟 | |
 
 ---
 
@@ -148,7 +156,7 @@ v4l2src(MJPG) → jpegdec → videocrop(左右各420px) → videoflip(180°)
 | 常驻进程 | 内容 |
 |---|---|
 | **OME** | 接收 robot-pc / tele-pc，分发给 tele-pc、vlm-server、robot-pc 和 localhost |
-| **人物检测节点** | 从 OME（localhost）拉 `fisheye`，**降到 5 fps** 做检测，结果用 ROS 发给 robot-pc；把带框和录制标志的画面推回 OME（`detect`） |
+| **人物检测节点** | 从 OME（localhost）拉 `fisheye`，**降到 5 fps** 做检测，结果用 ROS 发给 robot-pc；把带框和录制标志的画面推回 OME（`human_detect`） |
 | **声音图叠加** | 从 OME 拉 `fisheye` ＋ `soundmap`，叠好推回 OME（`rgb_sm`）。独立进程 |
 | **语音转文字（ASR）** | 从 OME（localhost）拉两路音频，按静音切句后用 faster-whisper（`medium`）转成文字。结果由 vlm-server 拉走（§3.1）。独立进程、独立 venv |
 | **HTTP 服务** | 两件事：把转写发给 vlm-server、收 vlm-server 的判断转成 ROS（§3.1、§5.3） |
@@ -185,38 +193,13 @@ v4l2src(MJPG) → jpegdec → videocrop(左右各420px) → videoflip(180°)
 页面上的 OvenPlayer 直接向 `rog-server.local` 建 WebRTC 连接，tele-server 不在
 这条链上。局域网里任意一台机器都能当 tele-pc，同时开两台看也行。
 
-**手柄在 tele-pc 上能用。** 实测（Chrome 127，`http://192.168.1.100:8123`）：
-`isSecureContext` 是 `false`，但 `navigator.getGamepads` 照样是 function、
-调用不抛异常、返回 4 个槽位 —— 和 `http://localhost` 一模一样。
-**Gamepad API 没有被 secure context 挡住**（Firefox 没测）。
-
-**操作页面没有认证。** 它绑在局域网上，同一个 AP 上谁都能打开，
-而这个页面能开动机体。现场是封闭的 AP，暂按可接受处理。
-`UI_ROS_ENABLE` 默认 **0**，但那是因为**操作指令通路还没设计**
-（机体那一侧还没接），不是因为这条。
-
-### 4.2 麦克风（跑在 tele-pc 上）
-
-```
-alsasrc(hw:CARD=<耳机>) → audioconvert → audioresample
-    → voaacenc → aacparse → mpegtsmux → srtsink
-```
-
-- 用 `hw:CARD=<名字>` 钉死耳机麦，**设备不在就直接启动失败**（不退回默认输入）。
-- **常开，没有 PTT**：进程一起来声音就一直流向机体扬声器。
-- **这部分代码不在本仓库管**，由当天的 tele-pc 自行准备。本文档只约定送进 OME
-  的形态：stream key `operatormic`、AAC 48 kHz 1ch、SRT。
-
-### 4.3 声音图的显示
-
-视频和声音图**保持两路独立，在显示时叠加**。robot-pc 推的是黑底黄斑的画面，
-操作界面用 screen 混合叠到视频上，强度由界面滑块调。
+**手柄在 tele-pc 上能用**（Chrome 实测，非 secure context 也不受影响）。
 
 ---
 
 ## 5. vlm-server
 
-这台机器上只有 VLM，24 GB 显存整块给它，**不装 whisper**。
+这台机器上只有 VLM，24 GB 显存整块给它。
 
 ### 5.1 输入
 
@@ -226,11 +209,14 @@ alsasrc(hw:CARD=<耳机>) → audioconvert → audioresample
 | 声音图 | 同上 |
 | 最近 N 秒的转写 | `GET /transcript` 找 stream-server 要（§3.1） |
 
-- **只连视频 pad**：`fisheye` 带着机体麦克风的音轨，这边不接。
+- **只接视频轨**：`fisheye` 这条流里视频和机体麦克风的音轨是分开的两条轨，
+  vlm-server 只订阅视频那条（`recv.py` 的 `fisheye` 频道），不订阅音轨
+  （`onboard` 频道）—— 音频归 stream-server 处理。
 - **有界的环形缓冲**：判断时按需要取 N 帧、跨多长时间，并按时刻把声音图和鱼眼
   配成对。帧数、尺寸、缓冲深度都是本机的 config，改了不用碰 stream-server。
-- 帧的时刻是**到达 vlm-server 的时刻**，实测配对差 **±76～125 ms**。每一对的
-  时刻差都报出来，**面板上超过 200 ms 标红**。
+- 帧的时刻是**到达 vlm-server 的时刻**，不是采集时刻，实测配对差
+  **±76～125 ms**。每一对的时刻差都报出来，**面板上超过 200 ms 标红**。
+  → **待检讨**（§8）。
 
 ### 5.2 转写
 
@@ -257,7 +243,10 @@ VLM 的判断用 `POST /decision` 发给 stream-server，由它转成 ROS 消息
 格式用 **rosbag2 / mcap**。gst 来的数据也封成 ROS 消息，视频、声音、指令
 **进同一个 bag**；将来加 ROS 节点的 topic 也进同一个 bag。
 
-**"一个文件"指的是"一个 mcap 会话"**，内部按 `BAG_SPLIT_MB`（默认 2048）切片。
+**一个录制区间 = 一个 bag。** 每次门控从关到开就新建一个目录
+（`boxie_<YYYYmmdd_HHMMSS>`），关闭时收尾；下一个区间是新的一个。
+`BAG_SPLIT_MB`（默认 2048）是**这个目录内部**的分片，和区间边界无关 ——
+任何读取端都把一个目录当成一段连续记录。
 
 ### 6.2 只在有人的时候录
 
@@ -276,7 +265,7 @@ VLM 的判断用 `POST /decision` 发给 stream-server，由它转成 ROS 消息
 |---|---|
 | ① 常态 | 在内存环形缓冲里持续囤 `PREROLL_SEC`（默认 10 s）≈ 34 MB |
 | ② 收到 `true` | 先把环形缓冲吐出去，再转入实时写入 |
-| ③ 收到 `false` | 继续写 `POSTROLL_SEC`（默认 15 s） |
+| ③ 收到 `false` | 继续写 `POSTROLL_SEC`（默认 10 s） |
 | ④ postroll 期间又收到 `true` | **不关闭，延长** |
 
 - **切点按 robot-pc 自己收到的时刻定。** 链路延迟 0.2～0.5 s ＋ 判定迟滞
@@ -284,7 +273,7 @@ VLM 的判断用 `POST /decision` 发给 stream-server，由它转成 ROS 消息
 - **H.264 必须从 GOP 边界开始。** 吐环形缓冲时回退到
   `收到 true 的时刻 − PREROLL_SEC` **之前最近的关键帧**再切；
   `keyframe-period=30`（1 s），最多多录 1 s。音频和声音图按时刻精确切。
-- 任何短于 `POSTROLL_SEC + PREROLL_SEC`（约 25 s）的离开都不会留下空洞。
+- 任何短于 `POSTROLL_SEC + PREROLL_SEC`（20 s）的离开都不会留下空洞。
 - **fail-open：** `TRIGGER_TIMEOUT_SEC`（默认 3 s）内没收到 `record/trigger`
   就**切换到连续记录**，恢复后回到门控状态。**门控状态本身也写进 bag。**
 
@@ -372,7 +361,19 @@ teleop_msgs/SoundMap                teleop_msgs/AudioChunk
 | **venv 的做法两台不一样** | rog-server 是 24.04，`--system-site-packages` 的 venv 就能继承系统的 gi。**vlm-server 是 20.04**，系统 `python3-gi` 只有 3.8 而 faster-whisper 要 ≥3.9 —— 继承不过来，要 pyenv 装 3.10 ＋ pip 装 PyGObject **3.48.2**（3.52 起要 girepository-2.0，20.04 只有 1.64）。见 `vlm-server/README.md` |
 | **UMA16v2** | 只能以 S32LE、16ch、interleaved 打开。用 `audioconvert` 降到 S16LE 再记录 |
 | **Xacti** | 只出 MJPG，到 H.264 的转码绕不开 |
-| **DDS 跨 distro** | robot-pc 是 Humble、rog-server 是 Jazzy，默认 Fast DDS ＋ 两边 `ROS_DOMAIN_ID` 一致即可，**不要换 RMW**（CycloneDDS 实测不通）。官方不保证，**任一边升级大版本后要重测** —— 这条不通录制触发就到不了，且是静默的 |
+| **DDS 跨 distro** | robot-pc 是 Humble、rog-server 是 Jazzy，用默认 Fast DDS ＋ 两边 `ROS_DOMAIN_ID` 一致，**实测能通**。**不要换 RMW**（CycloneDDS 实测不通） |
 | **组播与多网卡** | 发送端必须选对网卡。机器上有 `tailscale0` 时组播默认发到它上面，表现和「AP 挡组播」一样 |
 | **ctranslate2 的 CUDA 库** | faster-whisper 不带 CUDA 运行库，要装 `nvidia-cublas-cu12`，而链接器**不会**去 venv 的 `site-packages/nvidia/` 找。所以启动脚本必须设 `LD_LIBRARY_PATH`，并在 `Transcriber` 启动时硬跑一次编码器预热 —— 否则模型加载、显存占用、`get_cuda_device_count()` 全绿，只有真人声进到编码器才炸 |
 | **Tailscale** | 必须作为正式成员加入同一 tailnet，**节点共享（Share device）不行**。它先走 DERP，正式开始前要先通信一会儿，等 `tailscale status` 显示 `direct` |
+
+---
+
+## 8. 待检讨
+
+已知没做、但暂时不影响跑起来的事。
+
+| 项 | 现状 |
+|---|---|
+| **`rgb_sm` 没有做时间戳对齐** | `soundmap_overlay.py` 拿到哪帧就叠哪帧，鱼眼和声音图之间没有按时刻配对。作为监视流够用，但**这条流不能当作有时刻含义的数据**。要用的话得先补对齐 |
+| **vlm-server 拿不到采集时刻** | 帧的时刻是到达时刻（§5.1），跨广域网。要拿到真正的采集时刻，得让时刻跟着媒体一起走（OME 的扩展头 / 单独的旁路 topic），还没定用哪条 |
+| **操作指令通路** | `UI_ROS_ENABLE=1` 之后 UI 会发 ROS 指令，但**机体那一侧还没接** |

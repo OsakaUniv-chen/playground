@@ -13,7 +13,8 @@ rog-server 上的这个服务发，浏览器在 tele-pc 上，媒体流一点都
 
   - **OME 的地址不再是 localhost。** 浏览器和 OME 不在同一台机器上了，
     页面里那个 `ws://` 要指 `rog-server.local`（`OME_HOST_BROWSER`）。
-  - **stream key 跟着改名**：`STREAM_KEY_MAIN` → `STREAM_KEY_FISHEYE`。
+  - **stream key 跟着改名**：画面取 `STREAM_KEY_VIEW`（`rgb_sm`），
+    声音取 `STREAM_KEY_ONBOARDMIC`（`onboardmic`）。
   - **绑定地址**：旧实现绑死 127.0.0.1，因为浏览器就在同一台机器上。
     现在不行了，见下面 ★★ 那段。
   - **手臂指令暂时发不了**，见下面 ★ 那段。
@@ -63,8 +64,8 @@ ARM_ENABLE = os.environ["ARM_ENABLE"] == "1"
 # 两个不是一回事，别混。）
 OME_WS = (f"ws://{os.environ['OME_HOST_BROWSER']}:{os.environ['OME_WS_PORT']}"
           f"/{os.environ['OME_APP']}/")
-STREAM_KEY_FISHEYE = os.environ["STREAM_KEY_FISHEYE"]
-STREAM_KEY_SOUNDMAP = os.environ["STREAM_KEY_SOUNDMAP"]
+STREAM_KEY_VIEW = os.environ["STREAM_KEY_VIEW"]
+STREAM_KEY_ONBOARDMIC = os.environ["STREAM_KEY_ONBOARDMIC"]
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ["UI_SECRET"]
@@ -139,8 +140,8 @@ def index():
         "base.html",
         robot_name=ROBOT_NAME,
         ome_ws=OME_WS,
-        stream_main=STREAM_KEY_FISHEYE,
-        stream_soundmap=STREAM_KEY_SOUNDMAP,
+        stream_view=STREAM_KEY_VIEW,
+        stream_onboardmic=STREAM_KEY_ONBOARDMIC,
         ros_enabled=ROS_ENABLE,
         arm_enabled=ARM_ENABLE,
     )

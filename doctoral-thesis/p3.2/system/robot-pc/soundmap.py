@@ -63,12 +63,12 @@ INPUT_TIMEOUT_MS = 3000
 # 周期和积分窗是两回事：窗比周期长，每次滑动取。
 # 窗长决定信噪比和空间分辨率，同时计算量也大致成正比。
 # 464 ms = 20480 sample/ch @44.1kHz，是 word-wolf 的实测条件。
-HZ = 15               # 生成周期。旧实现是 10 Hz；N100 实测上限 27 Hz
+HZ = 15               # 生成周期。N100 实测上限 27 Hz
 WINDOW_MS = 464       # 积分窗
 SM_SIZE = 64          # 生成分辨率。**原样送出**，放大交给接收端
 
 # ---- 算法常量 ----
-# 改这些等于换了一个生成器，下游的标定（GAIN、exp 变换）都会跟着失效。
+# 改这些等于换了一个生成器。
 BAND_LOW = 2000       # 带通下限 [Hz]。和 FFT 波束成形版同频带，便于对比
 BAND_HIGH = 8000      # 带通上限 [Hz]
 FILTER_ORDER = 4
@@ -76,13 +76,9 @@ SOUND_SPEED = 345     # [m/s]
 DISTANCE = 1.5        # 虚拟栅格到阵列的距离 [m]
 MIN_SAMPLES = 256     # 不足这么多样本就返回全 0
 
-# GAIN 是拿真实 16ch 录音（G11_game4_DoA）标定出来的，不是合成数据：
-# 真实混响和噪声下能达到的峰值一致率只有 0.6～0.7，远不到理想的 1.0。
-# 直接按 "0.5->0, 1.0->160" 映射的话，绝大部分量程都浪费在永远不会出现的
-# 分数上，经过 exp(sm-sm.max()) 之后整张图会被压成几乎看不见的一个点。
-# GAIN=50 是让"可见像素"（exp 变换后 >0.05）的占比和 FFT 版落在同一量级
-# （都是 0.03～0.04）挑出来的。
-GAIN = 50.0
+# 显示用的归一化：先减掉本帧的 p99 再逐帧 min-max（见 to_image）。
+# 定稿见 test-soundmap/final-decision/make_final_1bit_videos.py。
+DISPLAY_PCT = 99.0
 
 # miniDSP UMA16v2 的实际麦克风坐标 [m]。
 MIC_POSITIONS = np.array([
@@ -290,13 +286,16 @@ class OneBitSoundMap:
     # ---- 步骤 4：分数 -> 二维图 ----
 
     def generate(self, audio: np.ndarray) -> np.ndarray:
-        """audio: (N, channels) int16。返回 (sm_size, sm_size) float，范围 [0,160]。"""
+        """audio: (N, channels) int16。返回 (sm_size, sm_size) float。
+
+        返回的是**原始一致率分数**，范围 [0,1]（0.5 = 完全不相关）。
+        不在这里做任何面向显示的变换 —— 归一化是 to_image 的事，
+        存进 bag 的也是这个原始值。
+        """
         if audio.shape[0] < MIN_SAMPLES:
             return np.zeros((self.sm_size, self.sm_size))
         score = self._xor_correlate(self._binarize(audio))
-        # 这不是物理声压级，只是一个形状上和 exp(sm-sm.max()) 配套的量。
-        db_like = np.clip(score - 0.5, 0.0, None) * GAIN
-        return self._interpolate_to_soundmap(db_like)
+        return np.clip(self._interpolate_to_soundmap(score), 0.0, 1.0)
 
 
 # =====================================================================
@@ -304,20 +303,22 @@ class OneBitSoundMap:
 # =====================================================================
 
 def to_image(smap: np.ndarray) -> np.ndarray:
-    """把声音图变成「黑底黄斑」的 BGR 图。
+    """把原始一致率分数变成「黑底黄斑」的 BGR 图。
 
-        v   = exp(smap - smap.max())     归一化
+        x   = max(smap - p99(smap), 0)   减掉本帧的 p99 本底
+        v   = x / x.max()                逐帧 min-max
         BGR = [0, v, v]                  黑底黄斑
 
-    **必须用 exp，不能用 min-max 归一化。** GAIN=50 是在这个 exp 变换之后
-    标定的，换成 min-max 标定就失效：安静场景下整张图也会亮成一片热图，
-    "哪里在响"就读不出来了。
+    减 p99 是关键的一步：一致率的本底会随场景整体浮动，直接 min-max 的话
+    安静场景也会亮成一片。减掉本帧自己的 p99 之后剩下的才是"比本底显著高"
+    的那部分，也就是真正在响的方向。
 
     底色是黑的，所以接收端可以用 screen 混合直接叠到相机画面上。
     """
-    # 窗没填满时生成器返回全 0。这时不做 exp —— 否则会变成均匀值，
-    # 明明没声音却满屏发亮。
-    v = np.exp(smap - smap.max()) if smap.max() > 0 else smap
+    x = np.clip(smap - np.percentile(smap, DISPLAY_PCT), 0.0, None)
+    hi = float(x.max())
+    # 窗没填满（生成器返回全 0）或整帧都在本底以下时，直接给全黑。
+    v = x / hi if hi > 0 else np.zeros_like(x)
     v = (v * 255.0).clip(0, 255).astype(np.uint8)
     return np.stack([np.zeros_like(v), v, v], axis=-1)   # BGR = 黄
 
@@ -493,7 +494,8 @@ class Runner:
             self.n_short += 1
         if self.ros is not None:
             # **存的是生成器出来的原始值**，不是下面那张送去显示的黄斑图 ——
-            # 那个 exp 归一化不可逆，事后要重算或者换算法就没得救了。
+            # to_image 的 p99 + min-max 是逐帧、不可逆的，事后要重算或者换
+            # 算法就没得救了。
             # 时刻取窗尾（最新那块音频的采集时刻）：这张图反映的是"到那一刻为止"。
             m = self.SoundMap()
             self.ros.stamp(m, self.last_ts)
@@ -544,7 +546,7 @@ class Runner:
         line = (f"[10s] 输入 {self.n_audio} buf / 生成 {self.n_map} 帧 "
                 f"{avg:.1f} ms/帧（预算 {1000.0 / HZ:.0f}）")
         if self.n_short:
-            # 已知的两个原因：① CPU 真的不够（降 HZ 或让出核）；② 输入是
+            # 已知的两个原因：① CPU 真的不够；② 输入是
             # 数字静音之后的衰减尾，滤波掉进 denormal 区间慢 20 倍（真麦克风
             # 有底噪就不会，但带硬件噪声门的设备可能输出真正的全 0）。
             line += (f" ★ 超时 {self.n_short} 帧 —— 生成跟不上。"

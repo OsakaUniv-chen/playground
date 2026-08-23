@@ -40,7 +40,7 @@ OME 一律回
 **④ `mpegtsmux alignment=7`**（7 × 188 = 1316 B）。和 robot-pc 那四条一致。
 
 用法:
-    out = SrtVideoOut("detect", 1080, 1080, 5, 2000, cfg)
+    out = SrtVideoOut("human_detect", 1080, 1080, 5, 2000, cfg)
     out.start(); out.push(bgr); out.stop()
 """
 from __future__ import annotations

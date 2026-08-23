@@ -9,18 +9,11 @@
 {% endif %}
 
 <section class="content">
-    <!-- 映像の上に音響マップを重ねる。2 本とも独立したストリームなので、
-         vlm-server は音響マップだけを取り出せる。強さは画面のスライダで変える。 -->
+    <!-- 映像は rgb_sm 一本（stream-server が魚眼＋音響マップを合成済み）。
+         音声は onboardmic を別に引く ── rgb_sm は合成のため一周多く回るので、
+         音までそれに乗せると会話が数百 ms 遅れる。 -->
     <div class="player-wrapper">
-        <div id="player-cam"></div>
-        <div id="player-soundmap"></div>
-    </div>
-
-    <div class="overlay" id="overlay_soundmap_mix">
-        <label>SoundMap
-            <input type="range" id="mix" min="0" max="100" value="60">
-            <span id="mixval">60%</span>
-        </label>
+        <div id="player-view"></div>
     </div>
 
     <div class="status-indicator">
@@ -65,19 +58,14 @@
         parseStream: { enabled: true }
     });
 
-    // 下: カメラ（音声つき）  上: 音響マップ
-    const playerCam = mkPlayer("player-cam", "{{ stream_main }}", false);
-    const playerMap = mkPlayer("player-soundmap", "{{ stream_soundmap }}", true);
+    // 映像（合成済み・音声なし）
+    const playerView = mkPlayer("player-view", "{{ stream_view }}", true);
 
-    // 音響マップは黒地に黄色の斑点として届く（robot-pc/soundmap.py）。
-    // style.css で mix-blend-mode: screen を掛けてあるので、黒い所は
-    // カメラ映像がそのまま素通りし、黄色の斑点だけが乗る。
-    // スライダは混合比ではなく**斑点の強さ**（0 で消える）。
-    const mix = document.getElementById("mix");
-    const applyMix = () => {
-        document.getElementById("player-soundmap").style.opacity = mix.value / 100;
-        document.getElementById("mixval").innerText = mix.value + "%";
-    };
-    mix.addEventListener("input", applyMix);
-    applyMix();
+    // 音声だけの別ストリーム。**画面には出さない**ので隠しコンテナに作る。
+    // mute:false ── これが機体マイクの音。
+    const audioBox = document.createElement("div");
+    audioBox.id = "player-onboardmic";
+    audioBox.style.display = "none";
+    document.body.appendChild(audioBox);
+    const playerMic = mkPlayer("player-onboardmic", "{{ stream_onboardmic }}", false);
 </script>
