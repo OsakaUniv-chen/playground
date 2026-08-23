@@ -7,14 +7,13 @@
 #
 # 起来之后从 **tele-pc** 的浏览器打开 `http://rog-server.local:7779/`。
 #
-# **★ 手柄在 tele-pc 上用不了。** Gamepad API 只在 secure context 里可用，
-# 而 `http://rog-server.local:7779` 不是（`http://localhost` 才是）。旧实现
-# 靠「浏览器和 UI 同机」满足这个条件，架构 §4 把两者拆到两台机器之后这条没了。
-# 详见 stream-server 隔壁 tele-server/README.md 的「两个还没解决的问题」。
+# **手柄插在 tele-pc 上，浏览器读得到** —— 实测 Chrome 127 在非 localhost 的
+# http 源下 Gamepad API 照常可用（`isSecureContext` 是 false 也不影响）。
+# 先前这里写过相反的话，那是错的，详见 tele-server/README.md。
 #
 # **★ 页面没有认证，而它能开动机体。** 所以 `UI_ROS_ENABLE` 默认是 0
-# （只发页面，指令不发出去）。要真的开车再打开它，并且知道同一个 AP 上的人
-# 都能打开这个地址。
+# （只发页面，指令不发出去）—— 主要是因为**操作指令通路还没设计**，
+# 机体那一侧还没接。要真的开车再打开它。
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

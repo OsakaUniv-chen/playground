@@ -51,36 +51,35 @@ rog-server 上的这个服务发，浏览器在 tele-pc 上，媒体一点都不
 
 ---
 
-## ★★ 两个搬家带来的、还没解决的问题
+## 手柄能用（我先前说反了，实测更正）
 
-### ① 手柄在 tele-pc 上用不了（secure context）
+先前这里写着「Gamepad API 只在 secure context 里可用，所以从 tele-pc 打开
+`http://rog-server.local:7779` 读不到手柄」。**那是错的**，来源是旧实现代码里
+的一句注释，我没有验证就当成了事实。
 
-**Gamepad API 只在 secure context 里可用。** `http://localhost` 算，
-`http://rog-server.local:7779` **不算**。旧实现靠「浏览器和 UI 同机」满足这个
-条件（旧代码里就有这条注释），架构 §4 把两者拆到两台机器之后这条没了。
+实测（Chrome 127，从 `http://192.168.1.100:8123` 这个非 localhost 的 http 源）：
 
-**所以现在这个页面能看画面，但读不到手柄。** 出路有三条，都还没定：
+| origin | `isSecureContext` | `navigator.getGamepads` | 调用 | 槽位 |
+|---|---|---|---|---|
+| `http://192.168.1.100:8123` | **false** | `function` | 不抛异常 | 4 |
+| `http://localhost:8123` | true | `function` | 不抛异常 | 4 |
 
-| 办法 | 代价 |
-|---|---|
-| 给 tele-server 上 TLS（自签证书） | 浏览器第一次要点「继续访问」，之后就是 secure context |
-| 浏览器加 `--unsafely-treat-insecure-origin-as-secure=http://rog-server.local:7779` | 每台 tele-pc 都要配一次，容易忘 |
-| 把 UI 挪回 tele-pc 上跑 | 推翻架构 §4.1 的分工，但 secure context 白拿 |
+**两者完全一样。** `isSecureContext` 确实是 false，但 Gamepad API 没有被它挡住。
+所以 tele-pc 上插手柄、浏览器开 `http://rog-server.local:7779`，是可以工作的。
 
-这条得先定，否则「操作者用手柄开车」这件事根本做不到。
+**没测的：Firefox。** headless 下它不发探针请求，测不到。真要用 Firefox 的话
+现场确认一下 —— 打开 devtools 敲 `navigator.getGamepads()` 就知道。
 
-### ② 页面没有认证，而它能开动机体
+---
 
-旧实现绑死 127.0.0.1，等于「只有坐在这台机器前的人能开」。拆开之后浏览器在
-别的机器上，只能绑到局域网上 —— **同一个 AP 上的任何人打开这个地址都能开车**。
-`UI_SECRET` 是 Flask 的会话密钥，不是门禁。
+## 操作页面没有认证
 
-手柄因为 ① 用不了，但页面上的 Arm 按钮是普通的 click，twist 从浏览器 console
-也发得出来。现场是封闭的 AP，暂按可接受处理 —— **但这是搬家新引入的，
-不是原来就有的**，别当成一直如此。
+它绑在局域网上（`UI_BIND=0.0.0.0`，tele-pc 要能打开），而这个页面**能开动
+机体**。`UI_SECRET` 是 Flask 的会话密钥，不是门禁。同一个 AP 上谁打开这个地址
+都能开车。现场是封闭的 AP，暂按可接受处理。
 
-所以 `UI_ROS_ENABLE` 默认是 **0**：只发页面，指令不发出去。页面上会出现一条
-橙色的带子说明这一点（免得现场对着不动的机体查半天）。
+`UI_ROS_ENABLE` 默认是 **0**（只发页面，指令不发出去）—— 但那是因为下面那条
+（操作指令通路还没设计、机体那一侧还没接），不是因为这条。
 
 ---
 
@@ -141,10 +140,10 @@ cd ~/rog-pc && ./run_tele.sh      # 前台，Ctrl-C 停
 
 ## 还没做
 
-1. **secure context 那条要定**（上面 ★★①）—— 不定的话手柄用不了。
-2. **操作指令通路要设计**（上面 ★）—— 消息类型、机体那一侧谁来收、
-   头部指令和 VLM 的判断怎么合流。
-3. **实机没跑过。** `venv-tele` 还没建，页面没在 rog-server 上开过，
-   `rover/twist` 有没有真的到 robot-pc 也没验过。
-4. 页面上的右摇杆现在空着 —— 头部归 vlm-server 的 VLM 管（架构 §5），
+1. **操作指令通路要设计**（上面 ★）—— 消息类型、机体那一侧谁来收、
+   头部指令和 VLM 的判断怎么合流。这是现在真正卡着的一条。
+2. **实机没跑过。** `venv-tele` 还没建，页面没在 rog-server 上开过，
+   从 tele-pc 打开有没有画面、手柄读不读得到、`rover/twist` 有没有真的到
+   robot-pc，都没验过。
+3. 页面上的右摇杆现在空着 —— 头部归 vlm-server 的 VLM 管（架构 §5），
    要不要留一个手动介入还没定。

@@ -54,7 +54,7 @@ torch，权重和 whisper 模型要重下）。
 | `run_stream.sh` | 人物检测 → `record/trigger`（ROS）＋ `detect` 监视流 | 已实现，实机验证过 |
 | `run_overlay.sh` | 鱼眼 ＋ 声音图叠加 → `rgb_sm` 监视流 | 已实现，实机验证过 |
 | `run_asr.sh` | 两路音频 → 文字。**给 vlm-server 用**（架构 §5.2） | 已实现 |
-| `run_tele.sh` | 操作 UI（只发网页，不碰媒体流） | 代码搬过来了，**实机没跑过**；手柄还用不了（见那边 README 的 ★★①） |
+| `run_tele.sh` | 操作 UI（只发网页，不碰媒体流） | 代码搬过来了，**实机没跑过**。手柄从 tele-pc 是能用的（实测） |
 
 代码都在 [stream-server/](stream-server/)（除了 UI 在 [tele-server/](tele-server/)）。
 

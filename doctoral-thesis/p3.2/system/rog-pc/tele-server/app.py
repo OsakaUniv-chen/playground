@@ -20,23 +20,18 @@ rog-server 上的这个服务发，浏览器在 tele-pc 上，媒体流一点都
   - 配置从 `common/config.env` ＋ `pc-c-operator/config.env` 两层，
     变成本目录一个 `config.env`（`common/` 那一层随四机结构一起没了）。
 
-## ★★ 两个搬家带来的、还没解决的问题
+## 手柄能用（实测，别再听「secure context」那套）
 
-**① 手柄在 tele-pc 上用不了（secure context）。**
-Gamepad API 只在 secure context 里可用 —— `http://localhost` 算，
-`http://rog-server.local:7779` **不算**。旧实现靠「浏览器和 UI 同机」满足这个
-条件，拆开之后这条没了。所以现在这个页面**能看画面，但手柄读不到**。
-出路有三条，都还没定：给 tele-server 上 TLS（自签证书，浏览器点过一次例外
-之后就是 secure context）／给浏览器加
-`--unsafely-treat-insecure-origin-as-secure=`／把 UI 挪回 tele-pc 上跑
-（那样就推翻架构 §4.1 的分工）。
+先前这里写过「Gamepad API 只在 secure context 里可用，所以从 tele-pc 打开读不到
+手柄」—— **那是错的**，源头是旧实现的一句注释。实测 Chrome 127 从
+`http://192.168.1.100:8123`（非 localhost 的 http 源）：`isSecureContext` 是
+`false`，但 `navigator.getGamepads` 照样是 function、调用不抛异常、返回 4 个
+槽位，和 `http://localhost` 一模一样。**Gamepad API 没被挡。**（Firefox 没测。）
 
-**② 页面没有认证，而它能开动机体。**
-旧实现绑 127.0.0.1 就等于「只有坐在这台机器前的人能开」。现在浏览器在别的
-机器上，只能绑到局域网上 —— 于是**同一个 AP 上的任何人打开这个地址都能开车**
-（`UI_SECRET` 是 Flask 的会话密钥，不是门禁）。手柄因为 ① 用不了，但页面上的
-Arm 按钮是普通的 click，twist 从 console 也发得出来。现场是封闭的 AP，
-暂时按可接受处理，**但这是搬家新引入的，不是原来就有的**。
+## 页面没有认证，而它能开动机体
+
+绑在局域网上（tele-pc 要能打开），而 `UI_SECRET` 是 Flask 的会话密钥、不是门禁。
+同一个 AP 上谁打开这个地址都能开车。现场是封闭的 AP，暂按可接受处理。
 
 ## ★ 手臂指令现在发不出去
 
@@ -226,15 +221,13 @@ def main():
     signal.signal(signal.SIGTERM, _bye)
     signal.signal(signal.SIGINT, _bye)
 
-    # ★★ 见文件头：绑到局域网上是搬家逼出来的（浏览器在别的机器上），
-    # 而这个页面**没有认证却能开动机体**。现场是封闭的 AP，暂按可接受处理。
+    # 见文件头：这个页面没有认证却能开动机体。现场是封闭的 AP，暂按可接受处理。
     print(f"UI: http://{os.environ['OME_HOST_BROWSER']}:{PORT}/  "
           f"(robot={ROBOT_NAME}, bind={BIND})", flush=True)
+    print("    从 tele-pc 的浏览器打开这个地址。手柄插在 tele-pc 上。", flush=True)
     if BIND != "127.0.0.1":
         print("[warn] 页面绑在 %s 上，且没有认证 —— 同一个网里的人都能开车。"
               % BIND, flush=True)
-    print("[warn] 手柄需要 secure context，http:// 从别的机器打开是拿不到的"
-          "（见 README「两个还没解决的问题」）", flush=True)
     socketio.run(app, host=BIND, port=PORT, allow_unsafe_werkzeug=True)
 
 

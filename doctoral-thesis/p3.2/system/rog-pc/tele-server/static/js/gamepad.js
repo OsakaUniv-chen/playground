@@ -5,11 +5,6 @@
  *   - 右スティック（camera）を送らない。頭部の指令元は vlm-server の VLM
  *   - 速度スケーリングは送らない。robot-pc の rover 側で掛ける
  *     （無線を越える構成では、止める処理も機体側に無いと効かない）
- *
- * **★ このファイルは今のところ動かない。** Gamepad API は secure context を
- * 要求し、tele-pc から http://rog-server.local:7779 で開いた場合それを
- * 満たさない（http://localhost なら満たす）。旧実装は UI とブラウザが同一機
- * だったので通っていた。README の「両個還沒解決的問題」を見ること。
  */
 window.STATUS = { speed: 0, rotate: 0 };
 
