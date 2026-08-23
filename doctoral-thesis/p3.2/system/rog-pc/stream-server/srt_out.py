@@ -5,9 +5,7 @@
                                                         streamid=<vhost>/<app>/<key>
 
 `person_detect.py`（检测框 ＋ 录制标志）和 `soundmap_overlay.py`（鱼眼 ＋ 声音图）
-都用它。**进 OME 一律 SRT**（system-architecture.md §1.1），所以这里不提供
-RTMP/MPEGTS 的旁路 —— 旧实现要改 OME 的 `Server.xml` StreamMap 才能收 MPEG-TS，
-SRT 的 `streamid` 不用改配置。
+都用它。进 OME 一律 SRT（架构 §1.1），这里不提供 RTMP/MPEGTS 的旁路。
 
 **★ 发布进程死得不干净的话，OME 会留下一个同名的僵尸流。** 之后再推同名的流，
 OME 一律回

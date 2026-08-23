@@ -7,14 +7,8 @@
 # **只取音频，不碰视频**（`--no-video`）——「机体麦克风」复用在 fisheye 那条流里
 # （架构 §1.1），所以那条流要连，但只接音频 pad，省掉一路 1080×1080 的 H.264 解码。
 #
-# **为什么 ASR 在这台机器上。** 3090 那边要装 VLM（32B-AWQ 约 20 GB），
-# 加上 whisper 的 1.8 GB 就把 24 GB 顶满。挪到这里之后 3090 整块给 VLM，
-# 而这台的 4070 只被 YOLO 用掉 920 MiB / 7808 MiB。**代价是和 YOLO 抢算力**
-# （YOLO 每 200 ms 用 93 ms），跟不上就把 ASR_MODEL 降到 small。
-#
-# **和 run_stream.sh 是两个进程、两个 venv。** venv 分开是因为 ctranslate2 要
-# CUDA 12 的 cudnn 而现有 venv 的 torch 是 cu130；进程分开是因为 ASR 挂了不该
-# 连累人物检测（那条 5 Hz 的判定管着录制触发）。
+# **和 run_stream.sh 是两个进程、两个 venv**（ctranslate2 要 CUDA 12 的 cudnn，
+# 而那边的 torch 是 cu130）。**和 YOLO 抢算力**，跟不上就把 ASR_MODEL 降到 small。
 #
 # 设计见 ../system-architecture.md §5。
 set -u

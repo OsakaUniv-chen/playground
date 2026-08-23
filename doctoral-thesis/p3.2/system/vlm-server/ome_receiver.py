@@ -2,9 +2,7 @@
 """OME から WebRTC で 1 本のストリームを受ける共通モジュール。
 
 受信側は全部これを使う（stream-server の人物検出と音響マップ重畳、
-vlm-server の 4 入力、robot-pc の操作者マイク受信）。
-OME の出力は WebRTC か LLHLS しか無く、LLHLS は分割配信で数秒遅れるため、
-対話にも推論にも WebRTC を使う。
+vlm-server の 2 入力、robot-pc の操作者マイク受信）。
 
 依存は gst の `webrtcbin` と libsoup（`gi.repository.Soup`）。
 **`gstreamer1.0-nice` が要る**（`sudo apt install gstreamer1.0-nice`）。

@@ -5,12 +5,10 @@
                                           ├─ 叠加 ─▶ SRT ─▶ OME(app/rgb_sm)
     OME ──WebRTC──▶ soundmap 64×64@15     ┘
 
-**只是给人看的监视流。** 不进 bag、不参与任何判断 —— 做它是为了在 OvenPlayer
-上一眼确认「声音图的斑点和画面里的人对不对得上」。要做定量分析请用 bag 里的
+**只是给人看的监视流**，不进 bag、不参与任何判断。要做定量分析请用 bag 里的
 `soundmap/map`（float32 原始值），不要用这条流（H.264 有损、还叠了底图）。
 
-叠加的式子和 QC 视频（`soundmap-generator/soundmap-video/bag2video.py`）一样，
-也和旧实现 `archive/serverpc/gstreamer_cmd/soundmap_overlay.py` 一样：
+叠加的式子和 QC 视频（`soundmap-generator/soundmap-video/bag2video.py`）一致：
 
     sm_color = 黄色化(声音图 INTER_LINEAR 放大到 1080)
     blend    = addWeighted(sm_color, 0.6, cam, 0.8, 0)
@@ -19,13 +17,10 @@
 正方形推的（robot-pc 的 soundmap.py 里 pixel_size=1080），把横向压扁去凑尺寸
 会让斑点的位置整体错开。所以这里是**裁中央**，不是缩放。
 
-**声音图断了就回到素画面。** 贴着几秒前的旧斑点比不贴更容易误导 ——
+**★ 声音图断了就回到素画面。** 贴着几秒前的旧斑点比不贴更容易误导 ——
 看的人没法从画面上分辨「现在没声音」和「声音图这条流挂了」。
 
-和旧实现的两点不同：
-  ① 入口从 MPEG-TS/UDP 换成 OME 的 WebRTC（和别的拉流端共用 ome_receiver.py），
-     所以不用再在 OME 的 Server.xml 里维护「端口 → 名字」的对应表；
-  ② 出口从 udpsink/rtmpsink 换成 SRT（§1.1「进 OME 一律 SRT」）。
+**★ 鱼眼和声音图之间没有做时间戳对齐**，拿到哪帧就叠哪帧（架构 §8）。
 
 用法:
     ../run_overlay.sh

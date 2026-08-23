@@ -5,43 +5,19 @@
     tele-pc 的浏览器 ──WebRTC─▶ OME（收画面和声音图，**不经过这里**）
     这里 ──ROS/DDS──▶ robot-pc（操作指令）
 
-搬自旧实现的 `pc-c-operator/app.py`（git `f91be30`）。**旧实现里它跑在操作者
-自己的机器上，和 OME、浏览器三者同机**；现在按架构 §4 拆开了：页面由
-rog-server 上的这个服务发，浏览器在 tele-pc 上，媒体流一点都不经过这里。
+页面取两条流：画面 `STREAM_KEY_VIEW`（`rgb_sm`），声音 `STREAM_KEY_ONBOARDMIC`
+（`onboardmic`）。页面里那个 `ws://` 指的是 `OME_HOST_BROWSER` —— **浏览器和
+OME 不同机**，不能写 localhost。
 
-搬过来改了这些：
-
-  - **OME 的地址不再是 localhost。** 浏览器和 OME 不在同一台机器上了，
-    页面里那个 `ws://` 要指 `rog-server.local`（`OME_HOST_BROWSER`）。
-  - **stream key 跟着改名**：画面取 `STREAM_KEY_VIEW`（`rgb_sm`），
-    声音取 `STREAM_KEY_ONBOARDMIC`（`onboardmic`）。
-  - **绑定地址**：旧实现绑死 127.0.0.1，因为浏览器就在同一台机器上。
-    现在不行了，见下面 ★★ 那段。
-  - **手臂指令暂时发不了**，见下面 ★ 那段。
-  - 配置从 `common/config.env` ＋ `pc-c-operator/config.env` 两层，
-    变成本目录一个 `config.env`（`common/` 那一层随四机结构一起没了）。
-
-## 手柄能用（实测，别再听「secure context」那套）
-
-先前这里写过「Gamepad API 只在 secure context 里可用，所以从 tele-pc 打开读不到
-手柄」—— **那是错的**，源头是旧实现的一句注释。实测 Chrome 127 从
-`http://192.168.1.100:8123`（非 localhost 的 http 源）：`isSecureContext` 是
-`false`，但 `navigator.getGamepads` 照样是 function、调用不抛异常、返回 4 个
-槽位，和 `http://localhost` 一模一样。**Gamepad API 没被挡。**（Firefox 没测。）
-
-## 页面没有认证，而它能开动机体
-
-绑在局域网上（tele-pc 要能打开），而 `UI_SECRET` 是 Flask 的会话密钥、不是门禁。
-同一个 AP 上谁打开这个地址都能开车。现场是封闭的 AP，暂按可接受处理。
+**手柄能用**（Chrome 实测，非 secure context 也读得到）。
 
 ## ★ 手臂指令现在发不出去
 
-旧实现用 `audio_common_msgs/BoxieMotors` 发手臂角度，那个类型来自旧实现搬来的
-一份第三方消息包 —— 新结构里没有它（`teleop_msgs` 只有记录用的四个类型）。
-而**整条操作指令通路本来就还没设计**（架构文档开头把它划在范围外）。
+手臂角度原本用 `audio_common_msgs/BoxieMotors`，**新结构里没有这个类型**
+（`teleop_msgs` 只有记录用的四个），而整条操作指令通路还没设计。
 
 所以现在：`rover/twist` 用 `geometry_msgs/Twist`，到处都有，能发；
-手臂那条**关着**（`ARM_ENABLE=0`），打开会在启动时明确报错告诉你缺什么。
+手臂那条**关着**（`ARM_ENABLE=0`），打开会在**启动时**明确报错告诉你缺什么。
 """
 
 import os

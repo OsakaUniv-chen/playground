@@ -13,11 +13,9 @@ start_gstreamer.sh 只管把 stdout 出来的帧编码后发给 OME，不需要�
 **stdout 是数据通道，所有日志都走 stderr。** 往 stdout 打印一个字都会
 让下游的 gst 解析失败。
 
-**16ch 的原始数据不推出去。** 进 OME 的只有派生的声音图。但**记录要它** ——
-加 `--publish` 之后会往 ROS 上发 mic_array/audio（S16LE 16ch，10 ms 一块），
-由同机的 recorder.py 收进 bag。换声音图算法之后要重跑，这是唯一的源数据。
-
-不加 `--publish` 就完全不碰 ROS（没装 ROS 的机器上照样推流）。
+**16ch 的原始数据不推出去**，进 OME 的只有派生的声音图。加 `--publish` 之后
+会往 ROS 上发 mic_array/audio（S16LE 16ch，10 ms 一块）由 recorder.py 收进 bag；
+不加就完全不碰 ROS。
 """
 from __future__ import annotations
 
@@ -44,11 +42,9 @@ CHANNELS = 16
 HW_FORMAT = "S32LE"   # 硬件只能以 S32LE 打开，之后 audioconvert 降到 S16LE
 CHUNK_MS = 10         # appsink 每个 buffer 的长度
 
-# 输入停了的判定 [ms]。**"管线活着但没有数据"必须在这个进程里发现。**
-# USB 抽风或驱动卡死时 alsasrc 不报错也不再出 buffer，管线还停在 PLAYING，
-# 这个进程就那么挂着 —— 外面没有人会来杀它（每个进程自己盯自己，见 cam.py 的
-# pad probe），而这条流是 `soundmap.py | gst-launch` 的 shell 管道，要等这个
-# 进程也退出才算一轮结束，所以这边不自己退的话，监视循环就卡在那儿再也不重起了。
+# 输入停了的判定 [ms]。**必须在这个进程里发现并自己退出** —— 这条流是
+# `soundmap.py | gst-launch` 的 shell 管道，要等这个进程退出才算一轮结束，
+# 不自己退的话监视循环就卡在那儿再也不重起了。
 #
 # 这里是自己数时间，**没有用 gst 的 watchdog element**：它的计时器被任何经过
 # 的 event 重置而不只是 buffer（实测源不出帧、event 还在流的时候它永远不响），
@@ -362,8 +358,6 @@ class Runner:
                 f"! audio/x-raw,format={HW_FORMAT},rate={RATE},channels={CHANNELS} "
                 f"! audioconvert"
             )
-        # 这里没有送出用的 tee —— 16ch 不从这条路出机体。
-        #
         # drop=true：生成跟不上时宁可丢掉旧输入追上当前，也不要把延迟攒起来
         # （这张图是给人看和给 VLM 看的，不是记录用的）。
         return (

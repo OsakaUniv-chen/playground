@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""把 vlm-server 要的四路数据从 OME 收齐。
+"""从 OME 收多路的封装。stream-server 用它收两路音频（ASR），vlm-server 用它收
+两路视频。
 
-**三条流，四路数据。** 机体麦克风复用在 `fisheye` 里（架构 §1.1），不是独立
-的一条 —— 操作者要在一个浏览器页面里音画同步地收，所以推的时候就复用了。
-到了这边，那条流会出两个 pad，视频和音频各走各的：
+**三条流，四路数据** —— 机体麦克风复用在 `fisheye` 里（架构 §1.1），那条流会
+出两个 pad，视频和音频各走各的。用 `only=` 选要哪几路：
 
     OME ──WebRTC──▶ fisheye     ─┬─ 视频 ──▶ fisheye    场面理解（喂 VLM 的帧）
                                  └─ 音频 ──▶ onboard    现场说话 → 文字
@@ -15,12 +15,11 @@
 话消失，事后补不回来。所以视频走 `latest_video()`（覆盖式），音频走
 `add_audio_sink()`（全量回调）。
 
-**这边不做记录。** 记录只在 robot-pc 的 bag 里（架构 §6.1）。这个进程持有的
-只有「此刻最新的一枚」，历史不留。唯一的例外是转写出来的文字（asr.py 写的
-transcript.jsonl）—— 那个在这里生成，别处没有。
+**这边不做记录**，记录只在 robot-pc 的 bag 里（架构 §6.1）。视频缓冲是有界的，
+历史不留。
 
-用法（连调，不加载模型）:
-    ./run.sh recv                  # 20 秒，打印每条流收到多少
+用法（连调）:
+    ./run.sh recv                  # vlm-server 上：20 秒，打印每条流收到多少
     ./run.sh recv -- --seconds 60
 """
 from __future__ import annotations

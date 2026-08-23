@@ -5,17 +5,11 @@
                                           ├──▶ rosbag2 / mcap
     record/trigger（stream-server 5 Hz）──┘ 门控
 
-**判断在 stream-server，这里只管录。** 收到的就是一个 bool，连"为什么要录"
-都不知道 —— 将来往那个信号里 OR 别的触发源（操作者按一下按钮之类），
-这边一行都不用改。
+判断在 stream-server，这里只管录（架构 §6.2）。收到的就是一个 bool。
+`ros2 bag record` 的 CLI 做不了前录，所以自己包一层 rosbag2_py 的
+SequentialWriter，前面挂一个环形缓冲。
 
-**为什么不用 `ros2 bag record`：** 那个 CLI 做不了前录。等人出现了才开始录的话，
-"人出现之前的十几秒"永远拿不到，而那段恰恰是解释"他为什么走过来"的部分。
-所以这里自己包一层 rosbag2_py 的 SequentialWriter，前面挂一个环形缓冲。
-
-**收不到 trigger 就连续录（fail-open）。** stream-server 挂了、LAN 断了、
-检测节点卡死了 —— 哪种都一样，"悄无声息地什么都没录到"是最坏的结果。
-门控状态本身也写进 bag，事后才解释得了某一段为什么是空的。
+**收不到 trigger 就连续录（fail-open）**，门控状态本身也写进 bag。
 
 用法:
     python3 recorder.py                     生产：起来就等 trigger

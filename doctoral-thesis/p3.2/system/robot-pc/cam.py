@@ -7,14 +7,11 @@
     alsasrc ─ audioconvert ─ tee ─┬─ voaacenc ─ mux.                                (推流)
                                   └─ appsink ─ ROS                                  (记录)
 
-**为什么不是一行 gst-launch。** 记录要的是采集时刻，而它只有持有管线的进程
-算得出来（`running_time + base_time + offset`）；命令行既发不了 ROS 消息，
-也交不出 PTS。**不加 `--publish` 的时候，这个脚本做的事和原来那行 gst-launch
-一模一样** —— 没装 ROS 的机器上照样推流。
+记录的是编码之后的 H.264（Annex-B、一帧一条、IDR 自带 SPS），和推流共用同一份
+编码结果。**不加 `--publish` 就完全不碰 ROS**，没装 ROS 的机器上照样推流。
 
-**记录的是编码之后的 H.264**（Annex-B、一帧一条、IDR 自带 SPS），推流和记录
-共用同一份编码结果，不重复编。设备解析不在这里 —— 由 start_gstreamer.sh 每次
-重起时重新解析好传进来（那样拔插换了 /dev/videoN 也能接回来）。
+设备解析不在这里 —— 由 start_gstreamer.sh 每次重起时重新解析好传进来
+（拔插换了 /dev/videoN 也能接回来）。
 
 用法（正常由 start_gstreamer.sh 起）:
     python3 cam.py fisheye   --device /dev/video0 --mic hw:CARD=ATCSP1,DEV=0 --publish

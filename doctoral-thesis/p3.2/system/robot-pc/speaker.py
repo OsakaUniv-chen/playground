@@ -3,17 +3,14 @@
 
     OME ──WebRTC(Opus)──▶ ome_receiver ─ appsrc ─ audioconvert ─ alsasink
 
-**这是 robot-pc 上唯一一条下行流。** 另外四条是 SRT 往 OME 推，这条反过来。
-出 OME 一律 WebRTC，所以它不能像上行那样
-`gst-launch` 一行搞定 —— 收流用同目录的 `ome_receiver.py`（signalling、
-libsoup 2.4/3.0 的差异、ICE 那堆坑都在那份里，有实绩）。
+**这是 robot-pc 上唯一一条下行流**，收流用同目录的 `ome_receiver.py`。
 
-**放音必须用 AT-CSP1 本身。** 它自带硬件回声消除，操作者的声音从它自己放出去，
-机体麦克风才不会把这段声音又收回去送回操作者那边（换个别的喇叭放，回声消除
-就不认识那路信号了）。
+**★ 放音必须用 AT-CSP1 本身。** 它自带硬件回声消除，操作者的声音从它自己放
+出去，机体麦克风才不会把这段声音又收回去送回操作者那边；换个别的喇叭放，
+回声消除就不认识那路信号了。
 
-**记录**：加 `--publish` 会把收到的音频同时往 ROS 上发一份
-（`operator_mic/audio`），由同机的 recorder.py 收进 bag。不加就完全不碰 ROS。
+加 `--publish` 会把收到的音频同时往 ROS 上发一份（`operator_mic/audio`）
+由 recorder.py 收进 bag；不加就完全不碰 ROS。
 
 用法（正常由 start_gstreamer.sh 起，设备由它解析好传进来）:
     python3 speaker.py --device hw:CARD=ATCSP1,DEV=0
@@ -42,9 +39,7 @@ from gi.repository import GLib, Gst  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# **robot-pc 这个目录要能单独扔到机体上跑**，所以收流那份就放在同目录，
-# 不去引隔壁的 stream-server/。那边那份是源头，这里是副本，改要改源头
-# 再拷过来（两份现在是逐字节一样的，diff 一下就知道有没有走样）。
+# ome_receiver.py 是副本，源头在 stream-server/（改要改源头再拷过来）。
 sys.path.insert(0, HERE)          # 被 import 进来跑的时候也找得到
 try:
     from ome_receiver import OmeReceiver  # noqa: E402
@@ -88,8 +83,6 @@ class Speaker:
     # ---- 放音那一端 ----
 
     def pipeline_desc(self) -> str:
-        # 音从 ome_receiver 那边 push 进 appsrc，这里只负责往声卡送。
-        #
         # **caps 不在这里钉死**（见 _on_audio）：钉死了 OME 那边一变
         # 就是 not-negotiated，而且只有扬声器这一路静默地死掉，别的看不出来。
         #

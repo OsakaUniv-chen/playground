@@ -5,14 +5,10 @@
               ├─ OME ─▶ recv.py ─▶ 这里
     tele-pc ──┘                      └─ operator 操作者说了什么
 
-**收流和转写在同一个进程里**（架构 §5.2）。分成两个进程用 TCP 连起来是旧实现
-的做法，那是因为当时 `python3-gi` 只有 3.8 的、而 faster-whisper 装不进 3.8；
-现在 gi 和 CUDA 能在同一个 Python 里共存（stream-server 那边也是这么干的），
-就没有理由再拆。
+收流和转写在同一个进程里。**结果不在本机用** —— vlm-server 走
+`GET /transcript` 拉走（架构 §3.1），HTTP 出口也在这个进程里。
 
-**VLM 那半直接 import 这里的 `Transcriber`。** `text()` 给出「最近 N 秒的
-转写」，原样塞进 prompt 就行。VLM 还没写，所以这个文件现在也能单独跑
-（`./run.sh`），用来确认整条链路是活的。
+单独跑（不给 vlm-server 用，只看转写）：`../run_asr.sh -- --no-http`。
 
 ## 两个窗，是两回事
 
@@ -31,8 +27,7 @@
     tr.text()              # config.env 里那个窗
     tr.text(30)            # 这一次要 30 秒
 
-改窗口就改 config.env 再重起 —— **模型热加载只要 1.2 秒**（第一次的 138 秒是
-在下载 1.5 GB 权重）。事后还能拿 transcript.jsonl 换别的值重放。
+改窗口就改 config.env 再重起。事后还能拿 transcript.jsonl 换别的值重放。
 
 **★ 没人说话的时候，`text()` 就返回空字符串 —— 这是定下来的行为，别改。**
 不要在这里塞「（无发话）」之类的占位符：要不要把静默这件事告诉 VLM、怎么措辞，

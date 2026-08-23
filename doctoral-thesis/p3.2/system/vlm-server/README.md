@@ -137,7 +137,7 @@ def decide(frames, transcript):
 返回的东西之后要 `POST /decision` 给 stream-server 转成 ROS（架构 §5.3，
 **两边都还没写**）。
 
-参考 P6 的探针结果（32B-AWQ 在声音图上读方向 91.7%，`p6/try-VLM-server`）。
+参考先行的预备验证结果（32B-AWQ 在声音图上读方向 91.7%）。
 **显存要算账**：32B-AWQ 约 20 GB / 24 GB，用 vLLM 的话 `gpu_memory_utilization`
 别用默认的 0.9。
 
