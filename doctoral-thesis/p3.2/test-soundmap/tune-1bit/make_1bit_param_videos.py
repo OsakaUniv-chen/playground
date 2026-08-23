@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Render 1-bit sound-map visualization-parameter comparison videos.
 
-Four panels, each computed per camera frame:
-  top-left      2000-8000 Hz (current baseline)
-  top-right     1500-8000 Hz
-  bottom-left   1000-8000 Hz
-  bottom-right  500-8000 Hz
+Four panels, each computed per camera frame with band-pass 2000-8000 Hz,
+all mic pairs, and exact integer delay:
+  top-left      filter order 2
+  top-right     filter order 4 (current baseline)
+  bottom-left   filter order 6
+  bottom-right  filter order 8
 
 All panels use max(raw - p99(raw), 0) + minmax.
 """
@@ -48,6 +49,7 @@ CHANNELS = 16
 AUDIO_WIN = 160
 SKIP_S = 0.0
 PANEL_SIZE = 720
+GRID_COLS = 2
 FS = 44100
 FIXED_SM_ALPHA = 0.6
 CAM_ALPHA = 0.8
@@ -159,11 +161,11 @@ def p99_minmax_scale(raw_sm: np.ndarray) -> np.ndarray:
     return percentile_minmax(raw_sm, 99.0)
 
 
-BANDS = (
-    ("2000-8000 Hz", 2000, 8000),
-    ("1500-8000 Hz", 1500, 8000),
-    ("1000-8000 Hz", 1000, 8000),
-    ("500-8000 Hz", 500, 8000),
+FILTER_VARIANTS = (
+    ("filter order 2", 2),
+    ("filter order 4", 4),
+    ("filter order 6", 6),
+    ("filter order 8", 8),
 )
 
 
@@ -171,6 +173,16 @@ def sm_to_color(sm01: np.ndarray, size: int) -> np.ndarray:
     plot_sm = cv2.resize(np.clip(sm01, 0.0, 1.0), (size, size), interpolation=cv2.INTER_LINEAR)
     plot_sm = (plot_sm * 255).astype(np.uint8)
     return np.stack([np.zeros_like(plot_sm), plot_sm, plot_sm], axis=-1)
+
+
+def tile_panels(panels: list[np.ndarray], cols: int) -> np.ndarray:
+    rows = []
+    for start in range(0, len(panels), cols):
+        row = panels[start:start + cols]
+        if len(row) < cols:
+            row.extend([np.zeros_like(panels[0]) for _ in range(cols - len(row))])
+        rows.append(np.hstack(row))
+    return np.vstack(rows)
 
 
 def overlay_panel(
@@ -183,16 +195,16 @@ def overlay_panel(
     shown = p99_minmax_scale(raw_sm)
     sm_color = sm_to_color(shown, PANEL_SIZE)
     blend = cv2.addWeighted(sm_color, FIXED_SM_ALPHA, cam, CAM_ALPHA, 0)
-    cv2.rectangle(blend, (0, 0), (PANEL_SIZE, 64), (0, 0, 0), -1)
-    cv2.putText(blend, title, (14, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (255, 255, 255), 2)
+    cv2.rectangle(blend, (0, 0), (PANEL_SIZE, 58), (0, 0, 0), -1)
+    cv2.putText(blend, title, (12, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2)
     cv2.putText(
         blend,
         f"t={t_s:6.2f}s raw max={raw_sm.max():.3f} p99={np.percentile(raw_sm, 99):.3f} mean={raw_sm.mean():.3f}",
-        (14, 54),
+        (12, 49),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.58,
+        0.43,
         (230, 230, 230),
-        2,
+        1,
     )
     return blend
 
@@ -232,9 +244,18 @@ def render_bag(bag_dir: Path, out_dir: Path, limit_frames: int | None = None) ->
 
     video_duration_s = max((t_end - t0) / 1e9, 1e-6)
     video_fps = frame_indices.size / video_duration_s
+    grid_rows = -(-len(FILTER_VARIANTS) // GRID_COLS)
     apis = [
-        (title, OneBitSoundMapAPI(fs=FS, channels=CHANNELS, band_low=lo, band_high=hi))
-        for title, lo, hi in BANDS
+        (
+            title,
+            api,
+        )
+        for title, order in FILTER_VARIANTS
+        for api in [OneBitSoundMapAPI(
+            fs=FS, channels=CHANNELS,
+            filter_order=order,
+            band_low=2000, band_high=8000,
+        )]
     ]
 
     out_path = out_dir / f"{bag_dir.name}_1bit_params.mp4"
@@ -244,7 +265,7 @@ def render_bag(bag_dir: Path, out_dir: Path, limit_frames: int | None = None) ->
         str(tmp_video),
         cv2.VideoWriter_fourcc(*"mp4v"),
         video_fps,
-        (PANEL_SIZE * 2, PANEL_SIZE * 2),
+        (PANEL_SIZE * GRID_COLS, PANEL_SIZE * grid_rows),
     )
     if not writer.isOpened():
         raise RuntimeError(f"could not open video writer for {tmp_video}")
@@ -270,10 +291,7 @@ def render_bag(bag_dir: Path, out_dir: Path, limit_frames: int | None = None) ->
                 ]
             t_s = (t - t0) / 1e9
             rendered = [overlay_panel(frame, raw_sm, title, t_s) for title, raw_sm in raw_maps]
-            writer.write(np.vstack([
-                np.hstack([rendered[0], rendered[1]]),
-                np.hstack([rendered[2], rendered[3]]),
-            ]))
+            writer.write(tile_panels(rendered, GRID_COLS))
             written += 1
             if frame_no == 1 or frame_no % 100 == 0:
                 print(f"  {bag_dir.name}: frame+1bit {frame_no}/{len(frame_indices)}", flush=True)

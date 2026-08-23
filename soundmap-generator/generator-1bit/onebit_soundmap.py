@@ -93,6 +93,9 @@ class OneBitSoundMapGenerator:
         min_samples=256,
         band_low=2000,
         band_high=8000,
+        min_pair_distance=0.0,
+        delay_tolerance=0,
+        delay_tolerance_mode="exact",
     ):
         if device != "cpu":
             warnings.warn(
@@ -112,6 +115,13 @@ class OneBitSoundMapGenerator:
         self.sound_speed = 345
         self.filter_order = filter_order
         self.min_samples = min_samples
+        self.min_pair_distance = min_pair_distance
+        self.delay_tolerance = int(delay_tolerance)
+        self.delay_tolerance_mode = delay_tolerance_mode
+        if self.delay_tolerance < 0:
+            raise ValueError("delay_tolerance must be >= 0")
+        if self.delay_tolerance_mode not in ("exact", "max", "mean"):
+            raise ValueError("delay_tolerance_mode must be one of: exact, max, mean")
 
         self.mpos = self._mic_positions()
         self.gpos = self._create_merged_grid()
@@ -224,9 +234,14 @@ class OneBitSoundMapGenerator:
         self._pairs = []   # [(i, j, unique_diffs, grid->unique_diffs index), ...]
         for i in range(self.channels):
             for j in range(i + 1, self.channels):
+                pair_distance = float(np.linalg.norm(self.mpos[:, i] - self.mpos[:, j]))
+                if pair_distance < self.min_pair_distance:
+                    continue
                 diff = delay_samples[:, j] - delay_samples[:, i]
                 u, inv = np.unique(diff, return_inverse=True)
                 self._pairs.append((i, j, u, inv.ravel()))
+        if not self._pairs:
+            raise ValueError(f"No microphone pairs left after min_pair_distance={self.min_pair_distance}")
 
     # -- step 2: BPF + 1-bit (sign) quantization --
     def _audio_queue_to_array(self, audio_queue):
@@ -267,27 +282,41 @@ class OneBitSoundMapGenerator:
             packed[m, pad:pad + n_words] = self._pack_channel(bits[:, m], n_words)
         return packed, n_words
 
+    def _match_per_shift(self, packed, n_words, word_idx, i, j, shifts):
+        pad = self.WORD_PAD
+        ref_words = packed[i, pad:pad + n_words]        # (n_words,) unshifted reference
+
+        q, r = np.divmod(shifts, 64)                    # (k,) word offset, bit offset in [0,64)
+        start = pad + q                                 # (k,)
+        idx = start[:, None] + word_idx[None, :]        # (k, n_words): word containing bit r..
+        hi = packed[j][idx] >> r[:, None].astype(np.uint64)
+        shift_lo = np.where(r == 0, np.uint64(1), (64 - r).astype(np.uint64))
+        lo = packed[j][idx + 1] << shift_lo[:, None]    # unused when r==0, but must not shift by 64
+        shifted = np.where(r[:, None] == 0, packed[j][idx], hi | lo)
+
+        match_words = ~(ref_words[None, :] ^ shifted)   # set bits = agreeing samples
+        return _popcount64(match_words).sum(axis=1, dtype=np.int64)
+
     # -- step 3: bit-shift (LUT) & XOR+popcount correlation, over every mic pair --
     def _xor_correlate(self, bits):
         n = bits.shape[0]
         packed, n_words = self._pack_bits(bits)   # (channels, n_words + 2*pad)
-        pad = self.WORD_PAD
         word_idx = np.arange(n_words)
 
-        match_total = np.zeros(self.n_grid, dtype=np.int64)
+        match_total = np.zeros(self.n_grid, dtype=np.float64)
         for i, j, u, inv in self._pairs:
-            ref_words = packed[i, pad:pad + n_words]        # (n_words,) unshifted reference
-
-            q, r = np.divmod(u, 64)                          # (k,) word offset, bit offset in [0,64)
-            start = pad + q                                  # (k,)
-            idx = start[:, None] + word_idx[None, :]          # (k, n_words): word containing bit r..
-            hi = packed[j][idx] >> r[:, None].astype(np.uint64)
-            shift_lo = np.where(r == 0, np.uint64(1), (64 - r).astype(np.uint64))
-            lo = packed[j][idx + 1] << shift_lo[:, None]      # unused when r==0, but must not shift by 64
-            shifted = np.where(r[:, None] == 0, packed[j][idx], hi | lo)   # (k, n_words)
-
-            match_words = ~(ref_words[None, :] ^ shifted)     # (k, n_words): set bits = agreeing samples
-            match_per_shift = _popcount64(match_words).sum(axis=1, dtype=np.int64)   # (k,)
+            if self.delay_tolerance == 0 or self.delay_tolerance_mode == "exact":
+                match_per_shift = self._match_per_shift(packed, n_words, word_idx, i, j, u)
+            else:
+                offsets = np.arange(-self.delay_tolerance, self.delay_tolerance + 1, dtype=np.int64)
+                shifted_u = (u[:, None] + offsets[None, :]).ravel()
+                all_shifts, back = np.unique(shifted_u, return_inverse=True)
+                match_all = self._match_per_shift(packed, n_words, word_idx, i, j, all_shifts)
+                match_by_offset = match_all[back].reshape(u.shape[0], offsets.shape[0])
+                if self.delay_tolerance_mode == "max":
+                    match_per_shift = match_by_offset.max(axis=1)
+                else:
+                    match_per_shift = match_by_offset.mean(axis=1)
 
             match_total += match_per_shift[inv]
 
@@ -376,16 +405,22 @@ class OneBitSoundMapAPI:
     def __init__(self, fs: int = 44100, channels: int = 16,
                  blocksize: int = 4096, sm_size: int = 64, plot_size: int = 1080,
                  device: str = "cpu", precision: str = "float32",
-                 band_low: int = 2000, band_high: int = 8000):
+                 filter_order: int = 4,
+                 band_low: int = 2000, band_high: int = 8000,
+                 min_pair_distance: float = 0.0,
+                 delay_tolerance: int = 0, delay_tolerance_mode: str = "exact"):
         # blocksize/precision accepted-but-unused: kept only so this class is a
         # drop-in for beamform_soundmap.SoundMapAPI's constructor signature.
         self._gen = OneBitSoundMapGenerator(
             fs=fs, channels=channels, sm_size=sm_size, plot_size=plot_size, device=device,
-            band_low=band_low, band_high=band_high,
+            filter_order=filter_order,
+            band_low=band_low, band_high=band_high, min_pair_distance=min_pair_distance,
+            delay_tolerance=delay_tolerance, delay_tolerance_mode=delay_tolerance_mode,
         )
         self.sm_size = sm_size
         self.channels = channels
         self.device = self._gen.device
+        self.pair_count = len(self._gen._pairs)
 
     def generate(self, audio_chunks) -> np.ndarray:
         """audio_chunks: iterable of raw int16/16ch byte payloads.
