@@ -322,6 +322,18 @@ ASR 挂了不该连带让判断送不到机体。
 同时开两台看，都不需要动 tele-server。页面上的 OvenPlayer 直接向
 `rog-server.local` 建 WebRTC 连接，tele-server 不在这条链上。
 
+**★★ 但这个拆分让手柄用不了，这条还没解决。** Gamepad API 只在
+secure context 里可用 —— `http://localhost` 算，`http://rog-server.local:7779`
+**不算**。旧实现里 UI 和浏览器同机，所以一直是满足的；拆到两台机器之后就不
+满足了。三条出路（TLS 自签证书 / 浏览器的
+`--unsafely-treat-insecure-origin-as-secure` / 把 UI 挪回 tele-pc）都还没定。
+详见 `rog-pc/tele-server/README.md`。
+
+**★★ 同一个拆分还带来一件事：操作页面没有认证，而它能开动机体。**
+旧实现绑死 127.0.0.1，等于「只有坐在这台机器前的人能开」；现在浏览器在别的
+机器上，只能绑到局域网上。现场是封闭的 AP，暂按可接受处理 —— 但要知道这是
+拆分新引入的。所以 `UI_ROS_ENABLE` 默认是 0（只发页面，指令不发出去）。
+
 因此 tele-server 很轻（一个 Flask ＋ 一堆静态文件），**和 OME 同机部署**，
 在 rog-server 上当第二个服务跑。代码仍然分成两个文件夹 —— 职责不同，
 以后要挪走也方便。

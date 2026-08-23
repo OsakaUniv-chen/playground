@@ -1,0 +1,83 @@
+<!doctype html>
+<title>TeleOp {{ robot_name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="icon" type="image/png" href="/static/favicon/BLR-ロゴ-ど.png">
+
+{% if not ros_enabled %}
+<!-- 指令が出ない状態で「動かない」と現地で悩まないよう、画面に出しておく。 -->
+<div class="banner">UI_ROS_ENABLE=0 —— 画面だけ。操作指令は出ません</div>
+{% endif %}
+
+<section class="content">
+    <!-- 映像の上に音響マップを重ねる。2 本とも独立したストリームなので、
+         vlm-server は音響マップだけを取り出せる。強さは画面のスライダで変える。 -->
+    <div class="player-wrapper">
+        <div id="player-cam"></div>
+        <div id="player-soundmap"></div>
+    </div>
+
+    <div class="overlay" id="overlay_soundmap_mix">
+        <label>SoundMap
+            <input type="range" id="mix" min="0" max="100" value="60">
+            <span id="mixval">60%</span>
+        </label>
+    </div>
+
+    <div class="status-indicator">
+        <div>SPEED: <span id="speed">0</span></div>
+        <div>ROTATE: <span id="rotate">0</span></div>
+    </div>
+    <div id="indicator" class="text-indicators"></div>
+
+    <div class="overlay" id="overlay_infoimage_topleft">Navigate with <br>
+        <img border="0" src="{{ url_for('static', filename='icons8/iconscoutL.png') }}" width="60" height="60">
+    </div>
+
+    <!-- 右スティックは空き。頭部は vlm-server の VLM が動かす（設計 §5）。
+         自律を上書きする手動介入に割り当てるかは未決。 -->
+
+    <!-- 割り当てのあるボタンだけ出す。マイクは常時オンなので PTT は無い。 -->
+    <div class="overlay" id="overlay_buttons_abxy">
+        <div class="controller-buttons">
+            <div class="btn y" id="btnY"><span>Arm Up</span></div>
+            <div class="btn x" id="btnX"><span>Arm Down</span></div>
+        </div>
+    </div>
+</section>
+
+<!-- CDN は使わない。現地にインターネットが無いと画面ごと落ちるため
+     vendor/ に置いたものを読む（README の「vendor 化」参照）。 -->
+<script src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/ovenplayer.js') }}"></script>
+<script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
+<script src="{{ url_for('static', filename='js/gamepad.js') }}"></script>
+<script>
+    // **OME は別の機械**（rog-server）。旧実装ではブラウザと OME が同一機
+    // だったので localhost だったが、架構 §4 で tele-server と tele-pc に
+    // 分かれたので、ここは rog-server の名前を指す（OME_HOST_BROWSER）。
+    // ページが http なので ws（平文）。WebRTC のメディア自体は DTLS/SRTP。
+    // 接続先と stream key は tele-server/config.env の値を app.py が流し込む
+    // （ここに直書きすると送出側の robot-pc と食い違う）。
+    const OME = "{{ ome_ws }}";
+    const mkPlayer = (id, key, mute) => OvenPlayer.create(id, {
+        autoStart: true, autoFallback: true, mute: mute, controls: false,
+        sources: [{ type: "webrtc", file: OME + key }],
+        parseStream: { enabled: true }
+    });
+
+    // 下: カメラ（音声つき）  上: 音響マップ
+    const playerCam = mkPlayer("player-cam", "{{ stream_main }}", false);
+    const playerMap = mkPlayer("player-soundmap", "{{ stream_soundmap }}", true);
+
+    // 音響マップは黒地に黄色の斑点として届く（robot-pc/soundmap.py）。
+    // style.css で mix-blend-mode: screen を掛けてあるので、黒い所は
+    // カメラ映像がそのまま素通りし、黄色の斑点だけが乗る。
+    // スライダは混合比ではなく**斑点の強さ**（0 で消える）。
+    const mix = document.getElementById("mix");
+    const applyMix = () => {
+        document.getElementById("player-soundmap").style.opacity = mix.value / 100;
+        document.getElementById("mixval").innerText = mix.value + "%";
+    };
+    mix.addEventListener("input", applyMix);
+    applyMix();
+</script>

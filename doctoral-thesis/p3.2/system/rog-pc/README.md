@@ -7,11 +7,12 @@ rog-server 这台机器上跑的几个服务。**代码分两个文件夹，启�
 ├── run_stream.sh      起人物检测节点（顺带推 detect 监视流）
 ├── run_overlay.sh     起声音图叠加（推 rgb_sm 监视流）
 ├── run_asr.sh         起语音转文字（两路音频 → 文字，给 vlm-server 用）
-├── run_tele.sh        起 tele-server（尚未实现）
+├── run_tele.sh        起 tele-server（操作 UI）
 ├── stream-server/     OME ＋ 人物检测 ＋ ASR 的代码和配置
 ├── tele-server/       操作 UI 的代码（尚未实现）
 ├── venv/              ★ 不进 git。gi ＋ rclpy ＋ torch（人物检测、叠加）
 ├── venv-asr/          ★ 不进 git。gi ＋ faster-whisper（**和上面分开，见下**）
+├── venv-tele/         ★ 不进 git。flask ＋ rclpy（不要 torch / whisper）
 ├── weights/           ★ 不进 git。YOLO 权重
 ├── models/            ★ 不进 git。whisper 权重
 └── log/               ★ 不进 git
@@ -36,13 +37,13 @@ ROG 笔电，开发机的 hostname 恰好也叫 `ROG`，且同样跑着 OME。
 
 ```bash
 rsync -a --exclude __pycache__ \
-    stream-server tele-server run_stream.sh run_overlay.sh run_asr.sh README.md \
+    stream-server tele-server run_stream.sh run_overlay.sh run_asr.sh run_tele.sh README.md \
     student@rog-server.local:~/rog-pc/
 ```
 
 **只同步代码子目录，不要 `--delete` 整个 `~/rog-pc`** —— `venv/`、`venv-asr/`、
-`weights/`、`models/` 都在同一层，会被一起删掉（venv 重建要装 torch，
-权重和 whisper 模型要重下）。
+`venv-tele/`、`weights/`、`models/` 都在同一层，会被一起删掉（venv 重建要装
+torch，权重和 whisper 模型要重下）。
 
 ---
 
@@ -53,7 +54,7 @@ rsync -a --exclude __pycache__ \
 | `run_stream.sh` | 人物检测 → `record/trigger`（ROS）＋ `detect` 监视流 | 已实现，实机验证过 |
 | `run_overlay.sh` | 鱼眼 ＋ 声音图叠加 → `rgb_sm` 监视流 | 已实现，实机验证过 |
 | `run_asr.sh` | 两路音频 → 文字。**给 vlm-server 用**（架构 §5.2） | 已实现 |
-| `run_tele.sh` | 操作 UI（只发网页，不碰媒体流） | 尚未开始 |
+| `run_tele.sh` | 操作 UI（只发网页，不碰媒体流） | 代码搬过来了，**实机没跑过**；手柄还用不了（见那边 README 的 ★★①） |
 
 代码都在 [stream-server/](stream-server/)（除了 UI 在 [tele-server/](tele-server/)）。
 
