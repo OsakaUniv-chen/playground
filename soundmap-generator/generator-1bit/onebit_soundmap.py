@@ -91,6 +91,8 @@ class OneBitSoundMapGenerator:
         device="cpu",
         filter_order=4,
         min_samples=256,
+        band_low=2000,
+        band_high=8000,
     ):
         if device != "cpu":
             warnings.warn(
@@ -104,8 +106,8 @@ class OneBitSoundMapGenerator:
         self.sm_size = sm_size
         self.plot_size = plot_size
 
-        self.band_low = 2000
-        self.band_high = 8000
+        self.band_low = band_low
+        self.band_high = band_high
         self.distance = 1.5
         self.sound_speed = 345
         self.filter_order = filter_order
@@ -317,6 +319,25 @@ class OneBitSoundMapGenerator:
         # estimate, just something exp(sm-sm.max())-shaped comparably.
         return np.clip(score - 0.5, 0.0, None) * self.GAIN
 
+    def generate_raw_score(self, audio_queue):
+        audio = self._audio_queue_to_array(audio_queue)
+        if audio.shape[0] < self.min_samples:
+            return np.zeros((self.sm_size, self.sm_size))
+        bits = self._binarize(audio)
+        score = self._xor_correlate(bits)
+        return np.clip(self._interpolate_to_soundmap(score), 0.0, 1.0)
+
+    def generate_with_raw_score(self, audio_queue):
+        audio = self._audio_queue_to_array(audio_queue)
+        if audio.shape[0] < self.min_samples:
+            z = np.zeros((self.sm_size, self.sm_size))
+            return z, z
+        bits = self._binarize(audio)
+        score = self._xor_correlate(bits)
+        raw_score = np.clip(self._interpolate_to_soundmap(score), 0.0, 1.0)
+        db_like = self._interpolate_to_soundmap(self._score_to_db(score))
+        return db_like, raw_score
+
     def generate(self, audio_queue):
         audio = self._audio_queue_to_array(audio_queue)
         if audio.shape[0] < self.min_samples:
@@ -342,6 +363,8 @@ class OneBitSoundMapGenerator:
         elif method == "E":
             x = np.exp(x)
             filled_sm = (x - 1) / (np.exp(160) - 1)
+        elif method in ("F", "minmax"):
+            filled_sm = np.zeros_like(x) if x.max() == x.min() else (x - x.min()) / (x.max() - x.min())
         else:
             raise ValueError(f"Unknown visualization method: {method}")
 
@@ -352,11 +375,13 @@ class OneBitSoundMapGenerator:
 class OneBitSoundMapAPI:
     def __init__(self, fs: int = 44100, channels: int = 16,
                  blocksize: int = 4096, sm_size: int = 64, plot_size: int = 1080,
-                 device: str = "cpu", precision: str = "float32"):
+                 device: str = "cpu", precision: str = "float32",
+                 band_low: int = 2000, band_high: int = 8000):
         # blocksize/precision accepted-but-unused: kept only so this class is a
         # drop-in for beamform_soundmap.SoundMapAPI's constructor signature.
         self._gen = OneBitSoundMapGenerator(
             fs=fs, channels=channels, sm_size=sm_size, plot_size=plot_size, device=device,
+            band_low=band_low, band_high=band_high,
         )
         self.sm_size = sm_size
         self.channels = channels
@@ -366,3 +391,12 @@ class OneBitSoundMapAPI:
         """audio_chunks: iterable of raw int16/16ch byte payloads.
         Returns (sm_size, sm_size) float in [0,160]."""
         return self._gen.generate(list(audio_chunks))
+
+    def generate_raw_score(self, audio_chunks) -> np.ndarray:
+        """audio_chunks: iterable of raw int16/16ch byte payloads.
+        Returns interpolated 1-bit agreement score in [0,1]."""
+        return self._gen.generate_raw_score(list(audio_chunks))
+
+    def generate_with_raw_score(self, audio_chunks) -> tuple[np.ndarray, np.ndarray]:
+        """Returns (db_like_map, raw_agreement_score_map)."""
+        return self._gen.generate_with_raw_score(list(audio_chunks))
