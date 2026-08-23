@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live camera + 1-bit sound-map overlay viewer for parameter tuning.
+"""Live camera + final 1-bit sound-map overlay viewer.
 
 This is deliberately local and simple:
   - camera: OpenCV VideoCapture
@@ -8,11 +8,10 @@ This is deliberately local and simple:
 
 Keys:
   q / Esc  quit
-  [ / ]    decrease / increase temperature for soft exp
   - / =    decrease / increase overlay alpha
-  1        exp(sm - max)
-  2        exp((sm - max) / temperature)
-  3        percentile display
+  1        final p99-minmax raw 1-bit display
+  2        raw 1-bit agreement score
+  3        legacy exp(sm - max) display
   m        cycle view mode
 """
 from __future__ import annotations
@@ -124,20 +123,13 @@ def exp_scale(sm: np.ndarray) -> np.ndarray:
     return np.exp(x - x.max()) if x.max() > 0 else np.zeros_like(x)
 
 
-def soft_exp_scale(sm: np.ndarray, temperature: float) -> np.ndarray:
-    x = sm.astype(np.float64)
-    if x.max() <= 0:
+def p99_minmax_scale(raw_sm: np.ndarray) -> np.ndarray:
+    x = raw_sm.astype(np.float64)
+    x = np.clip(x - np.percentile(x, 99), 0.0, None)
+    hi = float(x.max())
+    if hi <= 0:
         return np.zeros_like(x)
-    return np.exp((x - x.max()) / max(temperature, 1e-6))
-
-
-def percentile_scale(sm: np.ndarray, lo_q: float, hi_q: float) -> np.ndarray:
-    x = sm.astype(np.float64)
-    lo = float(np.percentile(x, lo_q))
-    hi = float(np.percentile(x, hi_q))
-    if hi <= lo:
-        return np.zeros_like(x)
-    return np.clip((x - lo) / (hi - lo), 0.0, 1.0)
+    return x / hi
 
 
 def sm_to_color(sm01: np.ndarray, size: int) -> np.ndarray:
@@ -167,7 +159,7 @@ def resolve_camera(camera: str, camera_name: str) -> int | str:
     return 0
 
 
-def make_overlay(frame: np.ndarray, sm: np.ndarray, sm01: np.ndarray,
+def make_overlay(frame: np.ndarray, sm01: np.ndarray,
                  alpha: float, title: str, stats: str, output_size: int) -> np.ndarray:
     out = cv2.resize(frame, (output_size, output_size), interpolation=cv2.INTER_AREA)
     sm_color = sm_to_color(sm01, output_size)
@@ -195,10 +187,7 @@ def main() -> int:
     parser.add_argument("--output-size", type=int, default=1080,
                         help="resize camera frame to this square size before sound-map overlay")
     parser.add_argument("--display-width", type=int, default=1080)
-    parser.add_argument("--temperature", type=float, default=5.0)
     parser.add_argument("--alpha", type=float, default=0.6)
-    parser.add_argument("--percentile-lo", type=float, default=50.0)
-    parser.add_argument("--percentile-hi", type=float, default=99.0)
     args = parser.parse_args()
 
     camera_arg = resolve_camera(args.camera, args.camera_name)
@@ -213,16 +202,26 @@ def main() -> int:
     audio = AudioPipe(args.audio_device, args.rate, args.channels, args.chunk_ms,
                       args.audio_format, args.window_ms)
     audio.start()
-    api = OneBitSoundMapAPI(fs=args.rate, channels=args.channels)
+    api = OneBitSoundMapAPI(
+        fs=args.rate,
+        channels=args.channels,
+        filter_order=4,
+        band_low=2000,
+        band_high=8000,
+        min_pair_distance=0.0,
+        delay_tolerance=0,
+        delay_tolerance_mode="exact",
+    )
 
-    mode = 3
+    mode = 1
     mode_names = {
-        1: "1-bit exp(sm - sm.max())",
-        2: "1-bit soft exp",
-        3: "1-bit percentile",
+        1: "1-bit final p99-minmax raw",
+        2: "raw 1-bit agreement score",
+        3: "legacy exp(sm - sm.max())",
     }
-    sm = np.zeros((64, 64), dtype=np.float64)
-    sm01 = np.zeros_like(sm)
+    raw_sm = np.zeros((64, 64), dtype=np.float64)
+    db_sm = np.zeros((64, 64), dtype=np.float64)
+    sm01 = np.zeros_like(raw_sm)
     next_sm_time = 0.0
     sm_ms = 0.0
     frame_count = 0
@@ -240,33 +239,31 @@ def main() -> int:
                 win = audio.window()
                 if win:
                     t0 = time.perf_counter()
-                    sm = api.generate(win)
+                    db_sm, raw_sm = api.generate_with_raw_score(win)
                     sm_ms = (time.perf_counter() - t0) * 1000.0
                 next_sm_time = now + 1.0 / max(args.sm_fps, 0.1)
 
             if mode == 1:
-                sm01 = exp_scale(sm)
+                sm01 = p99_minmax_scale(raw_sm)
             elif mode == 2:
-                sm01 = soft_exp_scale(sm, args.temperature)
+                sm01 = np.clip(raw_sm, 0.0, 1.0)
             else:
-                sm01 = percentile_scale(sm, args.percentile_lo, args.percentile_hi)
+                sm01 = exp_scale(db_sm)
 
             n_audio, audio_age = audio.status()
             frame_count += 1
             fps = frame_count / max(time.monotonic() - t_start, 1e-6)
             stats = (
-                f"max={sm.max():.2f} p99={np.percentile(sm, 99):.2f} "
-                f"mean={sm.mean():.3f} sm={sm_ms:.1f}ms "
+                f"raw max={raw_sm.max():.3f} p99={np.percentile(raw_sm, 99):.3f} "
+                f"mean={raw_sm.mean():.3f} sm={sm_ms:.1f}ms "
                 f"audio={n_audio} age={audio_age:.2f}s fps={fps:.1f}"
             )
             if audio.error_text():
                 stats = "AUDIO ERROR: " + audio.error_text()[-100:]
             title = mode_names[mode]
-            if mode == 2:
-                title += f" T={args.temperature:.2f}"
-            if mode == 3:
-                title += f" p{args.percentile_lo:.0f}-p{args.percentile_hi:.0f}"
-            out = make_overlay(frame, sm, sm01, args.alpha, title, stats, args.output_size)
+            if mode == 1:
+                title += " | 2000-8000 Hz, 120 pairs, exact"
+            out = make_overlay(frame, sm01, args.alpha, title, stats, args.output_size)
             if args.display_width and out.shape[1] > args.display_width:
                 scale = args.display_width / out.shape[1]
                 out = cv2.resize(out, (args.display_width, int(out.shape[0] * scale)))
@@ -282,10 +279,6 @@ def main() -> int:
                 mode = 2
             elif key == ord("3"):
                 mode = 3
-            elif key == ord("["):
-                args.temperature = max(0.5, args.temperature - 0.5)
-            elif key == ord("]"):
-                args.temperature += 0.5
             elif key == ord("-"):
                 args.alpha = max(0.0, args.alpha - 0.05)
             elif key in (ord("="), ord("+")):
