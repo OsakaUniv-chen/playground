@@ -44,3 +44,8 @@ reference code/
 # PC-C の run.sh が出す実行時ログ（log/ui.log などと pids）。
 # 実行のたびに書き換わるもので、成果物ではない。
 doctoral-thesis/p3.2/system/pc-c-operator/log/
+
+# p3.2 の旧実装一式（78 GB。うち 77 GB は minipc/ros2_ws/xyz_data の旧 db3 bag）。
+# system-architecture.md を書くための参照物で、成果物ではない。手元には残すが
+# 版管理はしない（CLAUDE.md: no files >10MB）。
+doctoral-thesis/p3.2/system/archive/
